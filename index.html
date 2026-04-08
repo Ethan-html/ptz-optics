@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PTZ-Optics Camera Controller</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
+</head>
+
+<body class="bg-gray-900 text-white p-4">
+<!-- HEADER -->
+<div class="flex justify-between items-center mb-4 flex-wrap gap-3 relative">
+    <!-- Left side -->
+    <div class="flex items-center gap-3">
+        <h1 class="text-xl font-bold">PTZ-Optics Camera Controller</h1>
+        <span id="camStatus"
+              class="w-4 h-4 rounded-full bg-red-600"
+              title="Camera status"></span>
+    </div>
+
+    <!-- Center (END Stream button) -->
+    <div class="flex-1 flex justify-center">
+        <button id="endStreamBtn" 
+                onclick="endstream()" 
+                class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-500">
+            END Stream
+        </button>
+    </div>
+
+    <!-- Right side -->
+    <div class="flex gap-3 items-center ml-auto">
+        <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="editMode">
+            <span>Edit Mode</span>
+        </label>
+
+        <button onclick="openSettings()"
+                id="settingsBtn"
+                class="bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
+            Settings
+        </button>
+    </div>
+</div>
+<!-- GRID -->
+<div id="presetGrid"
+     class="grid gap-3 sm:gap-4 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(170px,1fr))] md:[grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]"></div>
+
+<!-- SETTINGS MODAL -->
+<div id="settingsModal"
+     class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+    <div class="bg-gray-800 p-6 rounded-xl w-full max-w-md space-y-3">
+        <h2 class="text-lg font-bold">Settings</h2>
+
+        <input id="ip"
+               placeholder="Camera IP"
+               class="w-full p-2 text-black rounded">
+
+        <input id="user"
+               placeholder="Camera Username"
+               class="w-full p-2 text-black rounded">
+
+        <input id="pass"
+               placeholder="Camera Password"
+               type="password"
+               class="w-full p-2 text-black rounded">
+
+        <input id="sceneCount"
+               type="number"
+               min="1"
+               max="50"
+               placeholder="Number of Scenes"
+               class="w-full p-2 text-black rounded">
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button onclick="closeSettings()"
+                    class="px-3 py-1 bg-gray-600 rounded">
+                Cancel
+            </button>
+            <button onclick="saveSettings()"
+                    class="px-3 py-1 bg-blue-600 rounded">
+                Save
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- LOGIN MODAL -->
+<div id="loginModal"
+     class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70]">
+    <div class="bg-gray-800 p-6 rounded-xl w-full max-w-sm space-y-3 text-center">
+        <h2 class="text-lg font-bold">Login</h2>
+
+        <input id="loginEmail"
+               type="email"
+               placeholder="Email"
+               class="w-full p-2 text-black rounded">
+
+        <input id="loginPass"
+               type="password"
+               placeholder="Password"
+               class="w-full p-2 text-black rounded">
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button onclick="login()"
+                    class="px-3 py-1 bg-blue-600 rounded">
+                Login
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast notifications -->
+<div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyC_L7uVdPryfAiA7r5Y3JA9pcxdyDy0P0M",
+    authDomain: "ptz-optics.firebaseapp.com",
+    projectId: "ptz-optics",
+    storageBucket: "ptz-optics.firebasestorage.app",
+    messagingSenderId: "713959372765",
+    appId: "1:713959372765:web:188364755d280923362834"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let config = {};
+
+auth.onAuthStateChanged(user => {
+    if(user){
+        $('#loginModal').hide();
+        $('#settingsBtn').prop('disabled', false);
+        loadSettings();
+    }else{
+        $('#loginModal').show();
+        $('#settingsBtn').prop('disabled', true);
+    }
+});
+
+function login(){
+    const email = $('#loginEmail').val();
+    const password = $('#loginPass').val();
+    auth.signInWithEmailAndPassword(email,password)
+        .then(()=>showToast("Logged in!"))
+        .catch(err=>showToast(err.message,"error"));
+}
+
+/* ===========================
+   TOAST
+=========================== */
+function showToast(msg,type="success"){
+    const colors = { success:'bg-green-600', error:'bg-red-600' };
+    const toast = $(`<div class="px-4 py-2 rounded ${colors[type]}">${msg}</div>`);
+    $('#toastContainer').append(toast);
+    setTimeout(()=>toast.remove(),3000);
+}
+
+/* ===========================
+   SETTINGS
+=========================== */
+function loadSettings(){
+    const user = auth.currentUser;
+    if(!user) return;
+
+    db.collection("settings").doc(user.uid).get()
+        .then(doc => {
+            if(doc.exists){
+                config = doc.data();
+            } else {
+                config = {ip:'',user:'',pass:'',sceneCount:30};
+            }
+            applyConfig();
+        })
+        .catch(() => {
+            config = {ip:'',user:'',pass:'',sceneCount:30};
+            applyConfig();
+        });
+}
+
+function applyConfig(){
+    $('#ip').val(config.ip);
+    $('#user').val(config.user);
+    $('#pass').val(config.pass);
+    $('#sceneCount').val(config.sceneCount || 30);
+    syncBackendSettings();
+    buildGrid();
+    updateCameraStatus();
+}
+
+function syncBackendSettings(){
+    fetch("/api/settings", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            ip: config.ip || "",
+            user: config.user || "",
+            pass: config.pass || "",
+            sceneCount: parseInt(config.sceneCount, 10) || 30
+        })
+    }).catch(() => {});
+}
+
+function saveSettings(){
+    const user = auth.currentUser;
+    if(!user){
+        showToast("Not logged in", "error");
+        return;
+    }
+
+    config = {
+        ip:$('#ip').val(),
+        user:$('#user').val(),
+        pass:$('#pass').val(),
+        sceneCount:parseInt($('#sceneCount').val())||30
+    };
+
+    db.collection("settings").doc(user.uid).set(config)
+        .then(() => {
+            showToast("Settings saved!");
+            closeSettings();
+            applyConfig();
+        })
+        .catch((err)=>showToast(err.message || "Failed to save settings","error"));
+
+    syncBackendSettings();
+}
+
+/* ------------------------
+   SETTINGS MODAL
+------------------------ */
+function openSettings(){ $('#settingsModal').removeClass('hidden'); }
+function closeSettings(){ $('#settingsModal').addClass('hidden'); }
+
+/* ------------------------
+   GRID
+------------------------ */
+function buildGrid(){
+    fetch(`/presets.json?${Date.now()}`)
+    .then(res => res.json())
+    .then(data => {
+
+        let count = config.sceneCount || 30;
+        let grid = $('#presetGrid');
+        grid.empty();
+
+        for(let i=1;i<=count;i++){
+
+            let item = data[i] || {
+                name: `Preset ${i}`,
+                img: "",
+                version: 0
+            };
+
+            let imgSrc = item.img
+                ? `${item.img}?v=${item.version}`
+                : "";
+
+            grid.append(`
+                <div class="preset bg-gray-800 rounded-xl overflow-hidden cursor-pointer hover:scale-[1.02] transition relative flex flex-col"
+                     data-id="${i}">
+                    <div id="imgWrap${i}" class="w-full aspect-video bg-gray-700 flex items-center justify-center">
+                        ${imgSrc
+                            ? `<img id="img${i}" class="w-full h-full object-cover" src="${imgSrc}" onerror="hideImg(${i})">`
+                            : `<span class="text-gray-300 text-sm">No Image</span>`
+                        }
+                    </div>
+
+                    <div id="name${i}" class="p-2 text-center text-sm break-words min-h-[48px] flex items-center justify-center">${item.name}</div>
+                </div>
+            `);
+        }
+    });
+}
+
+/* IMAGE FALLBACK */
+function hideImg(id){
+    $(`#img${id}`).hide();
+    if (!$(`#noImg${id}`).length) {
+        $(`#imgWrap${id}`).append(`<span id="noImg${id}" class="text-gray-300 text-sm">No Image</span>`);
+    }
+}
+
+/* CLICK */
+$('#presetGrid').on('click','.preset',function(e){
+    if(!config.ip) return;
+    let id=$(this).data('id');
+    if($('#editMode').prop('checked')){
+        let name=prompt("Preset name:", $(`#name${id}`).text() || `Preset ${id}`);
+        if(!name) return;
+        setPreset(name,id);
+        $(`#name${id}`).text(name);
+        showToast(`Preset ${id} saved`);
+        return;
+    }
+    recallPreset(id,5);
+    showToast(`Preset ${id} Called`);
+});
+
+/* ------------------------
+   API
+------------------------ */
+function recallPreset(presetNum) {
+    fetch(`/api/presets/${presetNum}/recall`, { method: "POST" })
+        .then(async (res) => {
+            let data = {};
+            try { data = await res.json(); } catch (e) {}
+            if (!res.ok) throw new Error(data.message || "Failed to recall preset");
+        })
+        .catch((err) => showToast(err.message || "Failed to recall preset", "error"));
+}
+function setPreset(name, num) {
+    fetch(`/api/presets/${num}/save`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                name: name
+            })
+        })
+    .then(async (res) => {
+        let data = {};
+        try { data = await res.json(); } catch (e) {}
+        if(!res.ok){
+            throw new Error(data.message || "Save failed");
+        }
+        buildGrid();
+        showToast("Preset saved!");
+    })
+    .catch((err) => showToast(err.message || "Save failed", "error"));
+}
+/* ------------------------
+   CAMERA STATUS
+------------------------ */
+function updateCameraStatus() {
+    if (!config.ip) {
+        setOffline();
+        return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+
+    fetch(`/api/camera/status?dummy=${Date.now()}`, {
+        signal: controller.signal,
+        mode: 'same-origin'
+    })
+    .then(res => res.json())
+    .then((data) => {
+        if (data.online) {
+            setOnline();
+        } else {
+            setOffline();
+        }
+    })
+    .catch(() => {
+        setOffline();
+    })
+    .finally(() => clearTimeout(timeout));
+}
+
+function setOnline(){
+    $('#camStatus').removeClass('bg-red-600').addClass('bg-green-600');
+}
+
+function setOffline(){
+    $('#camStatus').removeClass('bg-green-600').addClass('bg-red-600');
+}
+/* ------------------------
+   Macros
+------------------------ */
+// Helper to pause for a given number of milliseconds
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function endstream() {
+    const btn = document.getElementById("endStreamBtn");
+
+    // Disable button and show loading
+    btn.disabled = true;
+    const originalText = btn.innerText;
+    btn.innerText = "Processing...";
+
+    try {
+        // Trigger Hotkey 4
+        triggerHotkey(4);
+
+        // Wait 5000 ms (5 seconds)
+        await sleep(5000);
+
+        // Trigger Hotkey 18
+        triggerHotkey(18);
+
+        // Optional: show success toast
+        showToast("END Stream sequence completed");
+    } catch (err) {
+        console.error("Error in END Stream Macro hotkey sequence:", err);
+        showToast("Error running END Stream sequence");
+    } finally {
+        // Re-enable button and restore text
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
+}
+/* ------------------------
+   INIT
+------------------------ */
+function checkURLTrigger() {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    const preset = urlParams.get("preset");
+    if (preset) {
+        recallPreset(Number(preset));
+        showToast(`Preset ${preset} Called via URL`);
+    }
+
+    const hotkey = urlParams.get("hotkey");
+    if (hotkey) {
+        triggerHotkey(Number(hotkey));
+        showToast(`Hotkey ${hotkey} Triggered via URL`);
+    }
+}
+
+function triggerHotkey(num) {
+    // Call the local Python backend to trigger the hotkey
+    fetch(`http://localhost:8080/api/hotkey/${num}`)
+        .then(res => {
+            if(!res.ok) throw new Error("Failed to trigger hotkey");
+            console.log(`Hotkey ${num} triggered`);
+        })
+        .catch(err => console.error(err));
+}
+
+// Run on load
+window.addEventListener("load", checkURLTrigger);
+setInterval(updateCameraStatus,5000);
+</script>
+</html>
