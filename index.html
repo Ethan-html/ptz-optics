@@ -5,9 +5,6 @@
 <title>PTZ-Optics Camera Controller</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
 </head>
 
@@ -88,67 +85,11 @@
     </div>
 </div>
 
-<!-- LOGIN MODAL -->
-<div id="loginModal"
-     class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70]">
-    <div class="bg-gray-800 p-6 rounded-xl w-full max-w-sm space-y-3 text-center">
-        <h2 class="text-lg font-bold">Login</h2>
-
-        <input id="loginEmail"
-               type="email"
-               placeholder="Email"
-               class="w-full p-2 text-black rounded">
-
-        <input id="loginPass"
-               type="password"
-               placeholder="Password"
-               class="w-full p-2 text-black rounded">
-
-        <div class="flex justify-end gap-2 pt-2">
-            <button onclick="login()"
-                    class="px-3 py-1 bg-blue-600 rounded">
-                Login
-            </button>
-        </div>
-    </div>
-</div>
-
 <!-- Toast notifications -->
 <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
 
 <script>
-const firebaseConfig = {
-    apiKey: "AIzaSyC_L7uVdPryfAiA7r5Y3JA9pcxdyDy0P0M",
-    authDomain: "ptz-optics.firebaseapp.com",
-    projectId: "ptz-optics",
-    storageBucket: "ptz-optics.firebasestorage.app",
-    messagingSenderId: "713959372765",
-    appId: "1:713959372765:web:188364755d280923362834"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-
 let config = {};
-
-auth.onAuthStateChanged(user => {
-    if(user){
-        $('#loginModal').hide();
-        $('#settingsBtn').prop('disabled', false);
-        loadSettings();
-    }else{
-        $('#loginModal').show();
-        $('#settingsBtn').prop('disabled', true);
-    }
-});
-
-function login(){
-    const email = $('#loginEmail').val();
-    const password = $('#loginPass').val();
-    auth.signInWithEmailAndPassword(email,password)
-        .then(()=>showToast("Logged in!"))
-        .catch(err=>showToast(err.message,"error"));
-}
 
 /* ===========================
    TOAST
@@ -164,16 +105,20 @@ function showToast(msg,type="success"){
    SETTINGS
 =========================== */
 function loadSettings(){
-    const user = auth.currentUser;
-    if(!user) return;
-
-    db.collection("settings").doc(user.uid).get()
-        .then(doc => {
-            if(doc.exists){
-                config = doc.data();
-            } else {
-                config = {ip:'',user:'',pass:'',sceneCount:30};
+    fetch("/api/settings")
+        .then(async (res) => {
+            if (!res.ok) {
+                throw new Error("Failed to load settings");
             }
+            return res.json();
+        })
+        .then((data) => {
+            config = {
+                ip: data.ip || "",
+                user: data.user || "",
+                pass: data.pass || "",
+                sceneCount: parseInt(data.sceneCount, 10) || 30
+            };
             applyConfig();
         })
         .catch(() => {
@@ -206,12 +151,6 @@ function syncBackendSettings(){
 }
 
 function saveSettings(){
-    const user = auth.currentUser;
-    if(!user){
-        showToast("Not logged in", "error");
-        return;
-    }
-
     config = {
         ip:$('#ip').val(),
         user:$('#user').val(),
@@ -219,15 +158,25 @@ function saveSettings(){
         sceneCount:parseInt($('#sceneCount').val())||30
     };
 
-    db.collection("settings").doc(user.uid).set(config)
+    fetch("/api/settings", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(config)
+    })
+        .then(async (res) => {
+            if (!res.ok) {
+                let data = {};
+                try { data = await res.json(); } catch (e) {}
+                throw new Error(data.message || "Failed to save settings");
+            }
+            return res.json();
+        })
         .then(() => {
             showToast("Settings saved!");
             closeSettings();
             applyConfig();
         })
         .catch((err)=>showToast(err.message || "Failed to save settings","error"));
-
-    syncBackendSettings();
 }
 
 /* ------------------------
@@ -438,7 +387,10 @@ function triggerHotkey(num) {
 }
 
 // Run on load
-window.addEventListener("load", checkURLTrigger);
+window.addEventListener("load", () => {
+    loadSettings();
+    checkURLTrigger();
+});
 setInterval(updateCameraStatus,5000);
 </script>
 </html>
