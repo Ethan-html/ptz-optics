@@ -1,0 +1,56 @@
+{
+  "name": "ptz-optics",
+  "version": "1.0.0",
+  "description": "PTZ-Optics Camera Controller",
+  "main": "electron/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.ptzoptics.controller",
+    "productName": "PTZ-Optics Controller",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json",
+      "icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": "backend",
+        "filter": [
+          "app.py",
+          "index.html",
+          "icon.ico",
+          "presets/**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1"
+  }
+}

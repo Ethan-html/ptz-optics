@@ -3,6 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <title>PTZ-Optics Camera Controller</title>
+<link rel="icon" href="/icon.ico" type="image/x-icon">
+<script>
+(function () {
+  try {
+    var raw = localStorage.getItem("ptz_pageZoom");
+    if (raw === null || raw === "") return;
+    var z = parseInt(raw, 10);
+    if (isNaN(z) || z < 50 || z > 200) return;
+    document.documentElement.style.zoom = String(z / 100);
+  } catch (e) {}
+})();
+</script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
@@ -72,8 +84,22 @@
                placeholder="Number of Scenes"
                class="w-full p-2 text-black rounded">
 
+        <div>
+            <label for="pageZoom" class="block text-sm text-gray-300 mb-1">Page zoom</label>
+            <div class="flex items-center gap-3">
+                <input id="pageZoom"
+                       type="range"
+                       min="50"
+                       max="200"
+                       step="5"
+                       class="flex-1 min-w-0 accent-blue-500">
+                <span id="pageZoomLabel" class="tabular-nums w-14 text-right text-gray-200 shrink-0">100%</span>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">Scales the whole UI (same idea as browser zoom). Saved with your other settings.</p>
+        </div>
+
         <div class="flex justify-end gap-2 pt-2">
-            <button onclick="closeSettings()"
+            <button onclick="cancelSettings()"
                     class="px-3 py-1 bg-gray-600 rounded">
                 Cancel
             </button>
@@ -85,25 +111,40 @@
     </div>
 </div>
 
-<!-- Toast notifications -->
-<div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+<!-- Toast notifications (above settings modal z-[60]) -->
+<div id="toastContainer" class="fixed bottom-4 right-4 z-[100] flex max-w-md flex-col gap-2 pointer-events-none"></div>
 
 <script>
 let config = {};
 
 /* ===========================
    TOAST
+   Use .text() for the message so characters like < & in API errors are not parsed as HTML.
 =========================== */
-function showToast(msg,type="success"){
-    const colors = { success:'bg-green-600', error:'bg-red-600' };
-    const toast = $(`<div class="px-4 py-2 rounded ${colors[type]}">${msg}</div>`);
-    $('#toastContainer').append(toast);
-    setTimeout(()=>toast.remove(),3000);
+function showToast(msg, type = "success") {
+    const colors = { success: "bg-green-600", error: "bg-red-600" };
+    const bg = colors[type] || colors.success;
+    const text = msg != null && String(msg).trim() !== "" ? String(msg) : (type === "error" ? "Something went wrong" : "");
+    const $toast = $("<div/>", {
+        class:
+            "pointer-events-auto min-w-[10rem] max-w-md rounded px-4 py-3 text-sm font-medium text-white shadow-lg break-words " +
+            bg,
+        text: text
+    });
+    $("#toastContainer").append($toast);
+    setTimeout(() => $toast.remove(), type === "error" ? 5000 : 3000);
 }
 
 /* ===========================
    SETTINGS
 =========================== */
+function pageZoomFromStorage(){
+    const raw = localStorage.getItem("ptz_pageZoom");
+    const z = parseInt(raw, 10);
+    if (isNaN(z)) return 100;
+    return Math.max(50, Math.min(200, z));
+}
+
 function loadSettings(){
     fetch("/api/settings")
         .then(async (res) => {
@@ -113,41 +154,57 @@ function loadSettings(){
             return res.json();
         })
         .then((data) => {
+            let pageZoom = pageZoomFromStorage();
+            if (data && Object.prototype.hasOwnProperty.call(data, "pageZoom") && data.pageZoom != null && data.pageZoom !== "") {
+                const p = parseInt(data.pageZoom, 10);
+                if (!isNaN(p)) pageZoom = Math.max(50, Math.min(200, p));
+            }
             config = {
                 ip: data.ip || "",
                 user: data.user || "",
                 pass: data.pass || "",
-                sceneCount: parseInt(data.sceneCount, 10) || 30
+                sceneCount: parseInt(data.sceneCount, 10) || 30,
+                pageZoom
             };
             applyConfig();
         })
         .catch(() => {
-            config = {ip:'',user:'',pass:'',sceneCount:30};
+            config = {
+                ip: "",
+                user: "",
+                pass: "",
+                sceneCount: 30,
+                pageZoom: pageZoomFromStorage()
+            };
             applyConfig();
         });
 }
 
-function applyConfig(){
+function fillSettingsFormFromConfig(){
     $('#ip').val(config.ip);
     $('#user').val(config.user);
     $('#pass').val(config.pass);
     $('#sceneCount').val(config.sceneCount || 30);
-    syncBackendSettings();
-    buildGrid();
-    updateCameraStatus();
+    const z = config.pageZoom || 100;
+    $('#pageZoom').val(z);
+    $('#pageZoomLabel').text(z + '%');
 }
 
-function syncBackendSettings(){
-    fetch("/api/settings", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            ip: config.ip || "",
-            user: config.user || "",
-            pass: config.pass || "",
-            sceneCount: parseInt(config.sceneCount, 10) || 30
-        })
-    }).catch(() => {});
+function applyZoomPercent(pct){
+    let z = parseInt(pct, 10);
+    if (isNaN(z)) z = 100;
+    z = Math.max(50, Math.min(200, z));
+    document.documentElement.style.zoom = String(z / 100);
+    try {
+        localStorage.setItem("ptz_pageZoom", String(z));
+    } catch (e) {}
+}
+
+function applyConfig(){
+    fillSettingsFormFromConfig();
+    applyZoomPercent(config.pageZoom || 100);
+    buildGrid();
+    updateCameraStatus();
 }
 
 function saveSettings(){
@@ -155,7 +212,8 @@ function saveSettings(){
         ip:$('#ip').val(),
         user:$('#user').val(),
         pass:$('#pass').val(),
-        sceneCount:parseInt($('#sceneCount').val())||30
+        sceneCount:parseInt($('#sceneCount').val())||30,
+        pageZoom:parseInt($('#pageZoom').val(),10)||100
     };
 
     fetch("/api/settings", {
@@ -173,7 +231,7 @@ function saveSettings(){
         })
         .then(() => {
             showToast("Settings saved!");
-            closeSettings();
+            closeSettingsModal();
             applyConfig();
         })
         .catch((err)=>showToast(err.message || "Failed to save settings","error"));
@@ -182,8 +240,22 @@ function saveSettings(){
 /* ------------------------
    SETTINGS MODAL
 ------------------------ */
-function openSettings(){ $('#settingsModal').removeClass('hidden'); }
-function closeSettings(){ $('#settingsModal').addClass('hidden'); }
+function openSettings(){
+    fillSettingsFormFromConfig();
+    $('#settingsModal').removeClass('hidden');
+}
+function closeSettingsModal(){ $('#settingsModal').addClass('hidden'); }
+function cancelSettings(){
+    fillSettingsFormFromConfig();
+    applyZoomPercent(config.pageZoom || 100);
+    closeSettingsModal();
+}
+
+$('#pageZoom').on('input', function(){
+    const v = parseInt($(this).val(), 10);
+    $('#pageZoomLabel').text(v + '%');
+    applyZoomPercent(v);
+});
 
 /* ------------------------
    GRID
@@ -246,7 +318,7 @@ $('#presetGrid').on('click','.preset',function(e){
         showToast(`Preset ${id} saved`);
         return;
     }
-    recallPreset(id,5);
+    recallPreset(id);
     showToast(`Preset ${id} Called`);
 });
 
@@ -350,7 +422,7 @@ async function endstream() {
         showToast("END Stream sequence completed");
     } catch (err) {
         console.error("Error in END Stream Macro hotkey sequence:", err);
-        showToast("Error running END Stream sequence");
+        showToast("Error running END Stream sequence", "error");
     } finally {
         // Re-enable button and restore text
         btn.disabled = false;
@@ -378,7 +450,7 @@ function checkURLTrigger() {
 
 function triggerHotkey(num) {
     // Call the local Python backend to trigger the hotkey
-    fetch(`http://localhost:8080/api/hotkey/${num}`)
+    fetch(`/api/hotkey/${num}`)
         .then(res => {
             if(!res.ok) throw new Error("Failed to trigger hotkey");
             console.log(`Hotkey ${num} triggered`);
