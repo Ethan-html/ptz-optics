@@ -6,6 +6,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+import requests
+from requests.auth import HTTPDigestAuth
 
 import keyboard
 from flask import Flask, Response, jsonify, request, send_from_directory
@@ -91,11 +93,23 @@ def camera_auth_header(settings):
 
 def camera_get(path_with_query: str, timeout: int = 4) -> bytes:
     settings = get_settings()
-    base = camera_base_url(settings)
-    url = f"{base}/{path_with_query.lstrip('/')}"
-    req = Request(url, headers=camera_auth_header(settings), method="GET")
-    with urlopen(req, timeout=timeout) as response:
-        return response.read()
+
+    url = (
+        f"{camera_base_url(settings)}/"
+        f"{path_with_query.lstrip('/')}"
+    )
+
+    response = requests.get(
+        url,
+        auth=HTTPDigestAuth(
+            settings.get("user", ""),
+            settings.get("pass", "")
+        ),
+        timeout=timeout,
+    )
+
+    response.raise_for_status()
+    return response.content
 
 
 def upsert_preset(num: str, name: str | None = None, bump_version: bool = True):

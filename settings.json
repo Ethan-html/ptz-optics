@@ -2,5 +2,6 @@
   "ip": "192.168.0.88",
   "user": "admin",
   "pass": "Immanuel",
-  "sceneCount": 12
+  "sceneCount": 12,
+  "pageZoom": 160
 }
