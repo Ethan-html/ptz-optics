@@ -1,7 +1,12 @@
 node_modules/
 dist/
+backend-dist/
+build/
+*.spec
 *.log
 __pycache__/
 *.pyc
 .venv/
 venv/
+# Camera IP + password live here - do not commit
+settings.json

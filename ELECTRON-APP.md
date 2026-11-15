@@ -1,134 +1,85 @@
-# PTZ-Optics as a Windows app (Electron)
+# PTZ-Optics Controller — build, install, and run
 
-This project is a **Flask** web server (Python) plus a static **HTML** UI. The Electron shell starts the Python backend, opens a normal desktop window, and **does not show** the usual application menu bar (File, Edit, View, …)—only your page and the standard window title bar (minimize / maximize / close).
+## A. Build the installer (do this once, on YOUR dev PC)
 
-The server still listens on **`0.0.0.0`** (all interfaces), so other computers on your LAN can open **`http://<this-PCs-LAN-IP>:8080`** in a browser while the app is running.
+You need these installed **only on the PC that builds**:
+
+| Tool | Get it from | Note |
+|------|-------------|------|
+| Python 3.10+ | python.org | tick **Add python.exe to PATH** |
+| Node.js LTS | nodejs.org | includes `npm` |
+
+Then just double-click **`build.bat`** (or run it from a terminal in the project folder).
+It does four things for you:
+
+1. installs the Python packages (`requirements.txt` + PyInstaller)
+2. bundles the Python backend into `ptz-backend.exe` (so **other PCs do not need Python**)
+3. runs `npm install`
+4. runs `npm run dist` to make the installers
+
+When it finishes, the `dist\` folder contains:
+
+* `PTZ-Optics-Controller-Setup-<version>.exe` — normal installer (Start menu + desktop shortcut, uninstaller)
+* `PTZ-Optics-Controller-Portable-<version>.exe` — one file, no install, just double-click
+
+Build takes a few minutes the first time. Re-run `build.bat` whenever you change code.
+**Bump `"version"` in `package.json` before each build** so you can tell builds apart.
 
 ---
 
-## What you need installed
+## B. Install on another computer
 
-1. **Node.js** (LTS recommended) — includes `npm`.
-2. **Python 3** — available as `python` on your PATH (on some systems use the `py` launcher; see below).
-3. Python packages (from the project folder):
+1. Copy the **Setup** `.exe` (or the **Portable** one) to the other PC (USB stick, shared drive, etc.).
+2. Double-click it.
+   * **"Windows protected your PC" (SmartScreen):** the app isn't code-signed, so this is expected.
+     Click **More info → Run anyway**. (Removing the warning needs a paid code-signing certificate.)
+3. Open **PTZ-Optics Controller** → **Settings** → enter the camera **IP, username, password** → Save.
+   Settings are stored **per computer**, so each PC needs this once.
+4. First launch may show a **Windows Firewall** prompt. Local use works either way.
+   Click **Allow** only if you want other devices (phone, Stream Deck, another PC) to open
+   `http://<this-pc-ip>:8080`.
 
-   ```bat
-   cd /d C:\path\to\ptz-optics
-   python -m pip install -r requirements.txt
-   ```
+The other PC needs: Windows 10/11 64-bit and network access to the camera. Nothing else.
 
-   The `keyboard` library often needs **administrator** rights or appropriate permissions to simulate hotkeys on Windows.
+### Hotkeys / END Stream on the other PC
+The app presses **Ctrl+Alt+letter** to control your streaming software.
+* The streaming software must be set up with the same hotkeys on that PC.
+* If the streaming software runs **as Administrator**, this app must also run as Administrator,
+  otherwise Windows blocks the key presses. (Right-click the app → Run as administrator.)
+* The END Stream button can be switched on/off in **Settings → END Stream**, and its hotkey list (click a box, press the keys, set the wait) is edited there too.
+
+### Copying your scenes to the new PC
+Scene names/thumbnails are saved in the app's data folder (`settings.json`, `presets.json`, `presets\`).
+To move them: on the old PC press `Win+R`, type `%APPDATA%`, find the folder that contains
+`presets.json`, and copy `presets.json` + the `presets` folder to the same place on the new PC
+(run the app once there first so the folder exists).
 
 ---
 
-## One-time setup (Node dependencies)
-
-From the project root (where `package.json` lives):
+## C. Run without installing (development)
 
 ```bat
+pip install -r requirements.txt
 npm install
-```
-
----
-
-## Run as a desktop app (development)
-
-```bat
 npm start
 ```
-
-This will:
-
-- Start Flask on **port 8080** (unless you set `PORT`).
-- Store settings and preset images under Electron’s **user data** folder (not next to `app.py`), via the `PTZ_DATA_DIR` environment variable—so the installed `.exe` can write data without touching read-only install folders.
-
-To use another port (must match in the browser if you open the LAN URL manually):
-
-```bat
-set PORT=9090
-npm start
-```
+or just double-click `RUN.vbs` / `RUN.bat` to run the web page version in your browser.
 
 ---
 
-## Build a Windows installer / `.exe` (packaging)
-
-```bat
-npm run dist
-```
-
-Output appears under **`dist\`**. You get an NSIS installer (and unpacked artifacts depending on configuration) you can copy to other PCs.
-
-**Important:** The packaged app still **runs `python app.py`** from the copied `backend` resources. The target machine must have:
-
-- Python 3 on PATH as `python`, **or**
-- You can point to a specific interpreter before launching (PowerShell example):
-
-  ```powershell
-  $env:PTZ_PYTHON = "C:\Path\To\python.exe"
-  ```
-
-  The Electron main process uses `PTZ_PYTHON` when set (Windows), otherwise `python`.
-
-If you later want a **single** installer with no separate Python install, you would bundle an embedded Python or use PyInstaller for the backend—this is not set up in the repo; the steps above are the supported path today.
-
----
-
-## Network access (other computers)
-
-1. Start the app (or run `RUN.bat` / `python app.py` without Electron).
-2. On this PC, find its IPv4 address (e.g. `ipconfig`).
-3. On another device on the same network, open:
-
-   `http://192.168.x.x:8080`
-
-   (Replace with your real IP; use the same **port** as `PORT`, default **8080**.)
-
-4. **Windows Firewall:** allow inbound connections for **Python** or for **TCP port 8080** when prompted, or add a rule manually.
-
----
-
-## Behavior notes
-
-| Topic | Behavior |
-|--------|----------|
-| **Menu bar** | Removed with `Menu.setApplicationMenu(null)` and `setMenuBarVisibility(false)` so you do not get File/Edit/etc. |
-| **Window** | Normal framed window (`BrowserWindow`), not a custom frameless shell—looks like a typical Windows program. |
-| **Backend bind address** | Flask uses `host="0.0.0.0"` so LAN access works. |
-| **Data when using Electron** | `PTZ_DATA_DIR` is set to Electron `userData`; `settings.json`, `presets.json`, and `presets\` images go there. |
-| **Data when using `RUN.bat` only** | No `PTZ_DATA_DIR`; files stay in the project folder next to `app.py`. |
-
-To migrate data from a folder install to the Electron app, copy `settings.json`, `presets.json`, and the `presets` folder into the Electron `userData` directory for this app (path is under `%APPDATA%` for Electron apps; exact folder name matches `productName` / `appId`).
-
----
-
-## Optional: app icon
-
-1. Add a Windows icon file, e.g. `build\icon.ico`.
-2. In `package.json`, under `"build"`, add:
-
-   ```json
-   "win": {
-     "icon": "build/icon.ico"
-   }
-   ```
-
-Rebuild with `npm run dist`.
-
----
-
-## Optional: `python` vs `py` launcher
-
-If `python` is not on PATH but the Windows Store / `py` launcher works, either:
-
-- Add Python to PATH, or  
-- Set `PTZ_PYTHON` to the full path of `python.exe`, or  
-- Create a small wrapper `python.cmd` on PATH that calls `py`.
+## D. Updating other PCs
+Build a new installer with a higher version number and run it on the other PC — it upgrades in place
+and keeps that PC's settings and scenes.
 
 ---
 
 ## Troubleshooting
 
-- **Blank window or immediate exit:** Confirm `python -m pip install -r requirements.txt` succeeded and `python app.py` runs without errors from the `backend` folder.
-- **Port already in use:** Another process is using `8080`. Stop it or set `PORT` to a free port for both Electron and any manual browser URL.
-- **Hotkeys not firing:** `keyboard` may need elevated privileges on Windows.
+| Problem | Fix |
+|---------|-----|
+| Blank window / "backend did not start" | Look at `backend.log` in the app data folder (`%APPDATA%`, folder containing `settings.json`). Make sure nothing else uses port 8080. |
+| Port 8080 already in use | Close the other program, or set environment variable `PORT=9090` before launching. |
+| Camera dot stays red | Check IP in Settings; the PC and camera must be on the same network. |
+| Camera moves but won't stop | Press **STOP ALL MOVEMENT** in the sidebar; check network quality to the camera. |
+| Hotkeys do nothing | See "Hotkeys" above (Administrator / same hotkeys in streaming software). |
+| `build.bat` fails at step 2 | Run `py -m pip install pyinstaller` manually and re-run; antivirus can also quarantine PyInstaller output — add the project folder as an exclusion. |

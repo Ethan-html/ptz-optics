@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PTZ-Optics Camera Controller</title>
 <link rel="icon" href="/icon.ico" type="image/x-icon">
 <script>
@@ -11,458 +12,1072 @@
     if (raw === null || raw === "") return;
     var z = parseInt(raw, 10);
     if (isNaN(z) || z < 50 || z > 200) return;
-    document.documentElement.style.zoom = String(z / 100);
+    document.documentElement.style.setProperty("--pz", String(z / 100));
   } catch (e) {}
 })();
 </script>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<style>
+:root{
+  --bg:#0d0f12; --surface:#15181d; --surface-2:#1c2026; --surface-3:#242932;
+  --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.14);
+  --text:#e9ebef; --muted:#8c93a0; --accent:#6ee7c8; --accent-ink:#04211a;
+  --danger:#ef4444; --radius:16px;
+  --panel-w:340px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+html{background:radial-gradient(1100px 520px at 85% -12%,rgba(110,231,200,.07),transparent 60%) fixed,var(--bg);scrollbar-width:none}
+html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;width:0;height:0}
+body{
+  color:var(--text);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  transition:padding-right .25s ease;
+}
+@media (min-width:1000px){ body.pinned{padding-right:var(--panel-w)} }
+/* hide every scrollbar (things still scroll with wheel / touch) */
+*{scrollbar-width:none}
+*::-webkit-scrollbar{display:none;width:0;height:0}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+svg{display:block}
+.icon{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hidden{display:none !important}
 
+.wrap{max-width:1700px;margin:0 auto;padding:18px clamp(12px,2.6vw,32px) 24px;zoom:var(--pz,1);container-type:inline-size}
+
+/* ---------- top bar ---------- */
+.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;margin-bottom:20px}
+.brand{grid-column:1;grid-row:1;display:flex;align-items:center;gap:12px;min-width:0;justify-self:start}
+.endwrap{grid-column:2;grid-row:1;justify-self:center}
+.tools{grid-column:3;grid-row:1;justify-self:end;display:flex;align-items:center;gap:8px}
+h1{margin:0;min-width:0;font-size:clamp(16px,2.1vw,20px);font-weight:650;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted);font-size:12px;white-space:nowrap}
+.status i{width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.15)}
+.status.on i{background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.16)}
+
+.iconbtn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;transition:color .15s,border-color .15s,background .15s}
+.iconbtn:hover{color:var(--text);border-color:var(--line-2)}
+.iconbtn.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+
+/* END Stream */
+.end{position:relative;overflow:hidden;height:40px;min-width:210px;padding:0 18px;border-radius:999px;border:1px solid rgba(239,68,68,.4);background:#241517;color:#ffd7d7;font-weight:620;letter-spacing:.01em;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.end .fill{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,#b91c1c,#f87171)}
+.end .label{position:relative;display:block;white-space:nowrap}
+.end.armed{border-color:#f87171;animation:pulse 1.2s infinite}
+.end.green{background:#10261e;border-color:rgba(52,211,153,.5);color:#d7ffee}
+.end.green .fill{background:linear-gradient(90deg,#059669,#34d399)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.45)}50%{box-shadow:0 0 0 7px rgba(248,113,113,0)}}
+
+.editbar{display:none;align-items:center;gap:10px;margin:-6px 0 16px;padding:10px 14px;border-radius:12px;border:1px dashed rgba(110,231,200,.5);background:rgba(110,231,200,.06);color:var(--accent);font-size:13px}
+body.editing .editbar{display:flex}
+
+/* ---------- scene grid ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(140px,19vw,240px),1fr));gap:clamp(10px,1.4vw,18px)}
+.card{position:relative;aspect-ratio:16/10;border-radius:var(--radius);overflow:hidden;background:var(--surface);border:1px solid var(--line);cursor:pointer;transition:transform .16s ease,border-color .16s,box-shadow .16s;padding:0;text-align:left}
+.card:hover{transform:translateY(-2px);border-color:var(--line-2)}
+.card:active{transform:scale(.985)}
+.card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.card .noimg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px;background:linear-gradient(135deg,var(--surface-2),var(--surface))}
+.card .meta{position:absolute;left:0;right:0;bottom:0;padding:30px 12px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));font-weight:560;font-size:13px;line-height:1.25;overflow-wrap:anywhere}
+.card .num{position:absolute;top:9px;left:9px;padding:2px 9px;border-radius:999px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);font-size:11px;font-weight:600;color:#fff}
+.card.flash{box-shadow:0 0 0 2px var(--accent)}
+.card .editov{position:absolute;inset:0;display:none;flex-direction:column;gap:6px;align-items:center;justify-content:center;background:rgba(6,20,17,.62);color:var(--accent);font-weight:600;font-size:13px}
+body.editing .card{border:1.5px dashed rgba(110,231,200,.65)}
+body.editing .card .editov{display:flex}
+
+/* ---------- edge drawer ---------- */
+#edgeZone{position:fixed;top:0;right:0;width:14px;height:100%;z-index:40}
+#edgeTab{position:fixed;right:0;top:50%;transform:translateY(-50%);width:22px;height:88px;border-radius:10px 0 0 10px;background:var(--surface-2);border:1px solid var(--line);border-right:0;color:var(--muted);display:grid;place-items:center;z-index:45;padding:0;transition:opacity .2s,width .15s,color .15s}
+#edgeTab:hover{width:28px;color:var(--text)}
+#edgeTab.gone{opacity:0;pointer-events:none}
+@media (hover:none){ #edgeZone{display:none} }
+
+#camPanel{
+  --joy:200px;--top:178px;
+  position:fixed;right:14px;top:14px;z-index:50;width:min(var(--panel-w),calc(100vw - 28px));
+  max-height:calc(100vh - 28px);overflow:auto;
+  background:#12151a;border:1px solid var(--line-2);border-radius:0;padding:12px;
+  box-shadow:0 18px 50px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;
+  transform:translateX(calc(100% + 40px));opacity:0;pointer-events:none;
+  transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .2s;
+}
+#camPanel.open{transform:none;opacity:1;pointer-events:auto}
+#camPanel.tiny .preview,#camPanel.tiny .quick{display:none}
+/* pinned on a wide screen = a docked column that belongs to the page */
+@media (min-width:1000px){
+  body.pinned #camPanel{top:0 !important;bottom:0;right:0;height:100%;max-height:none;width:var(--panel-w);background:#0f1217;border:0;border-left:1px solid var(--line);box-shadow:none}
+}
+.phead{display:flex;align-items:center;gap:4px;margin-bottom:10px;flex:none}
+.phead h2{margin:0 auto 0 2px;font-size:13px;font-weight:650;letter-spacing:.02em;color:var(--muted);text-transform:uppercase}
+.mini{width:30px;height:30px;border-radius:8px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center}
+.mini:hover{background:var(--surface-3);color:var(--text)}
+.mini.on{color:var(--accent)}
+.pbody{flex:1 1 auto;display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-height:0}
+
+.preview{flex:none;position:relative;height:var(--top);width:min(100%,calc(var(--top) * 16 / 9));margin:0 auto;border-radius:10px;overflow:hidden;background:#07080a;border:1px solid var(--line)}
+.preview img{width:100%;height:100%;object-fit:contain;display:block}
+.preview .msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px;text-align:center;padding:8px}
+.preview .live{position:absolute;top:7px;left:7px;display:flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;background:rgba(0,0,0,.55);font-size:10px;letter-spacing:.06em;font-weight:650;color:#cfd3da}
+.preview .live i{width:6px;height:6px;border-radius:50%;background:#6b7280}
+.preview .live.ok i{background:#34d399}
+.preview .live.bad i{background:#ef4444}
+
+/* shown in the preview's place when the preview is switched off */
+.quick{flex:none;height:var(--top);overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start}
+.quick button{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);text-align:left;min-width:0}
+.quick button:hover{border-color:var(--line-2);background:var(--surface-3)}
+.quick b{flex:none;width:20px;height:20px;border-radius:50%;background:var(--surface-3);color:var(--muted);font-size:11px;display:grid;place-items:center}
+.quick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+.quick .empty{grid-column:1/-1;color:var(--muted);font-size:12px;padding:6px 2px}
+
+.joy{flex:none;position:relative;width:var(--joy);height:var(--joy);margin:0 auto;border-radius:50%;
+  background:radial-gradient(circle at 50% 38%,#272b33,#15181d 72%);border:1px solid var(--line-2);
+  box-shadow:inset 0 0 36px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.04);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+.joy.drag{cursor:grabbing;border-color:rgba(110,231,200,.5)}
+.joy .tick{position:absolute;color:#4b525f;pointer-events:none}
+.joy .tick.n{top:8px;left:50%;margin-left:-8px}
+.joy .tick.s{bottom:8px;left:50%;margin-left:-8px;transform:rotate(180deg)}
+.joy .tick.w{left:8px;top:50%;margin-top:-8px;transform:rotate(-90deg)}
+.joy .tick.e{right:8px;top:50%;margin-top:-8px;transform:rotate(90deg)}
+.joy .tick svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.joy .knob{position:absolute;left:50%;top:50%;width:calc(var(--joy)*.32);height:calc(var(--joy)*.32);margin:calc(var(--joy)*-.16) 0 0 calc(var(--joy)*-.16);border-radius:50%;
+  background:radial-gradient(circle at 36% 30%,#f4f6f9,#a4abb7);box-shadow:0 8px 18px rgba(0,0,0,.6),inset 0 -3px 6px rgba(0,0,0,.18);
+  transition:transform .2s cubic-bezier(.3,1.5,.5,1);will-change:transform}
+.joy.drag .knob{transition:none;background:radial-gradient(circle at 36% 30%,#eafff9,#6ee7c8)}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none}
+.stack{display:flex;flex-direction:column;gap:6px;flex:none}
+.btn{height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-weight:540;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 12px;transition:background .12s,border-color .12s}
+.btn:hover{border-color:var(--line-2);background:var(--surface-3)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:650}
+.btn.primary:hover{filter:brightness(1.06);background:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.danger{color:#fca5a5;border-color:rgba(239,68,68,.35)}
+.btn.danger:hover{background:rgba(239,68,68,.12)}
+
+.rocker{display:grid;grid-template-columns:1fr 1fr;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.rocker button{height:38px;border:0;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:540;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.rocker button + button{border-left:1px solid var(--line)}
+.rocker button:hover{background:var(--surface-3)}
+.rocker button.held{background:rgba(110,231,200,.18);color:var(--accent)}
+.segsm{display:grid;grid-template-columns:1fr 1fr;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-top:6px}
+.segsm button{border:0;background:transparent;color:var(--muted);height:28px;border-radius:7px;font-size:12.5px;font-weight:560}
+.segsm button.on{background:var(--surface-3);color:var(--text)}
+
+.slider{display:flex;align-items:center;gap:10px}
+.slider label{font-size:12px;color:var(--muted);letter-spacing:.02em}
+.slider span{min-width:18px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:24px;background:transparent}
+.hint{margin:14px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5}
+kbd{background:var(--surface-3);border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:0 5px;font:11px ui-monospace,Consolas,monospace;color:var(--text)}
+
+/* ---------- dialogs ---------- */
+.modal{position:fixed;inset:0;background:rgba(4,5,7,.68);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:14px;z-index:100}
+.modal.show{display:flex}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:22px;width:100%;max-width:540px;max-height:100%;overflow:auto;padding:24px;box-shadow:0 30px 90px rgba(0,0,0,.6)}
+.sheet h2{margin:0 0 4px;font-size:18px;font-weight:650}
+.sheet .sub{margin:0 0 16px;color:var(--muted);font-size:13px}
+.sheet.wide{max-width:920px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:34px;margin-top:6px}
+.col{min-width:0}
+.group + .group{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+@media (max-width:820px){.cols{grid-template-columns:1fr;gap:0}.col + .col{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}}
+.group > h3{margin:0 0 12px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:650}
+.field{display:block;margin-bottom:12px}
+.field > span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.input{width:100%;height:40px;padding:0 12px;border-radius:11px;border:1px solid var(--line);background:var(--surface-2);outline:none;transition:border-color .15s,box-shadow .15s}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(110,231,200,.15)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.actions .btn{min-width:92px}
+
+.switchrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:6px}
+.switchrow b{font-weight:600}
+.switchrow small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.switch{position:relative;width:46px;height:27px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.switch span{position:absolute;inset:0;border-radius:999px;background:var(--surface-3);border:1px solid var(--line-2);transition:background .18s}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#cbd0d9;transition:transform .18s,background .18s}
+.switch input:checked + span{background:var(--accent);border-color:transparent}
+.switch input:checked + span::after{transform:translateX(19px);background:var(--accent-ink)}
+
+.steps{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.stephead,.steprow{display:grid;grid-template-columns:26px 1fr 82px 34px;gap:8px;align-items:center}
+.stephead{font-size:11px;color:var(--muted);padding:0 2px}
+.stepno{width:22px;height:22px;border-radius:50%;background:var(--surface-3);color:var(--muted);font-size:11px;font-weight:650;display:grid;place-items:center}
+.keycap{height:40px;border-radius:11px;border:1px dashed var(--line-2);background:var(--surface-2);text-align:left;padding:0 12px;color:var(--text);font-weight:560;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.keycap.empty{color:var(--muted);font-weight:450}
+.keycap.rec{border-color:var(--accent);border-style:solid;color:var(--accent);background:rgba(110,231,200,.08);animation:pulse2 1.1s infinite}
+@keyframes pulse2{0%,100%{box-shadow:0 0 0 0 rgba(110,231,200,.35)}50%{box-shadow:0 0 0 5px rgba(110,231,200,0)}}
+.delaybox{position:relative}
+.delaybox input{padding-right:22px;text-align:center}
+.delaybox em{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--muted);font-size:12px;pointer-events:none}
+.delaybox.off{opacity:.35}
+.addstep{margin-top:10px;width:100%}
+.zoomrow{display:flex;align-items:center;gap:12px}
+.zoomrow output{min-width:46px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------- toasts ---------- */
+#toasts{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:300;pointer-events:none;width:calc(100% - 24px)}
+.toast{max-width:min(460px,100%);padding:9px 16px;border-radius:999px;background:#22262d;border:1px solid var(--line-2);box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px;overflow-wrap:anywhere;text-align:center;animation:tin .18s ease-out}
+.toast.error{background:#2b1719;border-color:rgba(239,68,68,.45);color:#ffd7d7}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---------- small screens ---------- */
+@media (max-width:700px){
+  .wrap{padding-top:14px}
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .sheet{padding:18px;border-radius:20px}
+  .input,.keycap{font-size:16px}
+  #camPanel{top:0 !important;right:0;bottom:0;max-height:none;height:100%;width:min(94vw,380px);border-width:0 0 0 1px}
+}
+@container (max-width:780px){
+  .topbar{grid-template-columns:minmax(0,1fr) auto;row-gap:10px}
+  .brand{grid-column:1;grid-row:1}
+  .tools{grid-column:2;grid-row:1}
+  .endwrap{grid-column:1/-1;grid-row:2;justify-self:stretch}
+  .end{width:100%;height:44px}
+  .status .txt{display:none}
+}
+@media (max-width:420px){ .stephead,.steprow{grid-template-columns:22px 1fr 74px 32px} }
+@media (prefers-reduced-motion:reduce){ *{animation:none !important;transition:none !important} }
+</style>
 </head>
-
-<body class="bg-gray-900 text-white p-4">
-<!-- HEADER -->
-<div class="flex justify-between items-center mb-4 flex-wrap gap-3 relative">
-    <!-- Left side -->
-    <div class="flex items-center gap-3">
-        <h1 class="text-xl font-bold">PTZ-Optics Camera Controller</h1>
-        <span id="camStatus"
-              class="w-4 h-4 rounded-full bg-red-600"
-              title="Camera status"></span>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <h1>PTZ-Optics Controller</h1>
+      <span id="camStatus" class="status" title="Camera connection"><i></i><span class="txt">Offline</span></span>
     </div>
 
-    <!-- Center (END Stream button) -->
-    <div class="flex-1 flex justify-center">
-        <button id="endStreamBtn" 
-                onclick="endstream()" 
-                class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-500">
-            END Stream
-        </button>
+    <div class="endwrap" id="endWrap">
+      <button id="endStreamBtn" class="end" type="button">
+        <span class="fill" id="endFill"></span>
+        <span class="label" id="endLabel">END Stream</span>
+      </button>
     </div>
 
-    <!-- Right side -->
-    <div class="flex gap-3 items-center ml-auto">
-        <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="editMode">
-            <span>Edit Mode</span>
-        </label>
-
-        <button onclick="openSettings()"
-                id="settingsBtn"
-                class="bg-gray-700 px-3 py-1 rounded hover:bg-gray-600">
-            Settings
-        </button>
+    <div class="tools">
+      <button class="iconbtn" id="editBtn" type="button" title="Edit scenes" aria-pressed="false" aria-label="Edit scenes">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      </button>
+      <button class="iconbtn settings" id="settingsBtn" type="button" title="Settings" aria-label="Settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+      </button>
     </div>
-</div>
-<!-- GRID -->
-<div id="presetGrid"
-     class="grid gap-3 sm:gap-4 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))] sm:[grid-template-columns:repeat(auto-fit,minmax(170px,1fr))] md:[grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]"></div>
+  </header>
 
-<!-- SETTINGS MODAL -->
-<div id="settingsModal"
-     class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
-    <div class="bg-gray-800 p-6 rounded-xl w-full max-w-md space-y-3">
-        <h2 class="text-lg font-bold">Settings</h2>
+  <div class="editbar">
+    <svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    <span>Edit mode: aim the camera, then tap a scene to save the position and a new thumbnail.</span>
+  </div>
 
-        <input id="ip"
-               placeholder="Camera IP"
-               class="w-full p-2 text-black rounded">
-
-        <input id="user"
-               placeholder="Camera Username"
-               class="w-full p-2 text-black rounded">
-
-        <input id="pass"
-               placeholder="Camera Password"
-               type="password"
-               class="w-full p-2 text-black rounded">
-
-        <input id="sceneCount"
-               type="number"
-               min="1"
-               max="50"
-               placeholder="Number of Scenes"
-               class="w-full p-2 text-black rounded">
-
-        <div>
-            <label for="pageZoom" class="block text-sm text-gray-300 mb-1">Page zoom</label>
-            <div class="flex items-center gap-3">
-                <input id="pageZoom"
-                       type="range"
-                       min="50"
-                       max="200"
-                       step="5"
-                       class="flex-1 min-w-0 accent-blue-500">
-                <span id="pageZoomLabel" class="tabular-nums w-14 text-right text-gray-200 shrink-0">100%</span>
-            </div>
-            <p class="text-xs text-gray-400 mt-1">Scales the whole UI (same idea as browser zoom). Saved with your other settings.</p>
-        </div>
-
-        <div class="flex justify-end gap-2 pt-2">
-            <button onclick="cancelSettings()"
-                    class="px-3 py-1 bg-gray-600 rounded">
-                Cancel
-            </button>
-            <button onclick="saveSettings()"
-                    class="px-3 py-1 bg-blue-600 rounded">
-                Save
-            </button>
-        </div>
-    </div>
+  <main id="presetGrid" class="grid"></main>
 </div>
 
-<!-- Toast notifications (above settings modal z-[60]) -->
-<div id="toastContainer" class="fixed bottom-4 right-4 z-[100] flex max-w-md flex-col gap-2 pointer-events-none"></div>
+<!-- ============ camera drawer ============ -->
+<div id="edgeZone"></div>
+<button id="edgeTab" type="button" aria-label="Open camera controls" title="Camera controls">
+  <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<aside id="camPanel" aria-label="Camera controls">
+  <div class="phead" title="Keys while open: arrows move, + and - zoom, Esc closes">
+    <h2>Camera</h2>
+    <button class="mini on" id="previewBtn" type="button" title="Live preview on/off">
+      <svg class="icon eye-on" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      <svg class="icon eye-off hidden" viewBox="0 0 24 24"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9"/><path d="M9.9 5.1A10.7 10.7 0 0 1 12 5c7 0 11 7 11 7a18.5 18.5 0 0 1-2.2 3.2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+    </button>
+    <button class="mini" id="pinBtn" type="button" title="Dock to the page">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
+    </button>
+    <button class="mini" id="closeBtn" type="button" title="Close (Esc)">
+      <svg class="icon" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="pbody">
+    <div class="preview" id="previewBox">
+      <img id="livePreview" alt="">
+      <div class="msg" id="previewMsg">Loading preview...</div>
+      <div class="live" id="previewDot"><i></i>LIVE</div>
+    </div>
+    <div class="quick hidden" id="quickScenes"></div>
+
+    <div class="joy" id="joy" aria-label="Pan and tilt joystick">
+      <span class="tick n"><svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg></span>
+      <span class="tick s"><svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg></span>
+      <span class="tick w"><svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg></span>
+      <span class="tick e"><svg viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></svg></span>
+      <div class="knob" id="knob"></div>
+    </div>
+
+    <div class="row2">
+      <button class="btn" id="homeBtn" type="button">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home
+      </button>
+      <button class="btn danger" id="stopBtn" type="button">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop
+      </button>
+    </div>
+
+    <div class="rocker">
+      <button type="button" data-zoom="zoomout"><svg class="icon" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>Zoom out</button>
+      <button type="button" data-zoom="zoomin"><svg class="icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Zoom in</button>
+    </div>
+
+    <div class="stack">
+      <div class="rocker">
+        <button type="button" data-focus="focusin">Focus near</button>
+        <button type="button" data-focus="focusout">Focus far</button>
+      </div>
+      <div class="segsm" id="afSeg">
+        <button type="button" data-af="autofocus">Auto</button>
+        <button type="button" data-af="manualfocus">Manual</button>
+      </div>
+    </div>
+
+    <div class="slider" style="flex:none"><label for="speed">Speed</label><input id="speed" type="range" min="1" max="10" step="1" value="5"><span id="speedLabel">5</span></div>
+  </div>
+</aside>
+
+<!-- ============ settings ============ -->
+<div class="modal" id="settingsModal">
+  <div class="sheet wide" role="dialog" aria-labelledby="setTitle">
+    <h2 id="setTitle">Settings</h2>
+    <p class="sub">Saved on this computer.</p>
+
+    <div class="cols">
+      <div class="col">
+        <section class="group">
+          <h3>Camera</h3>
+          <label class="field"><span>IP address</span><input class="input" id="ip" placeholder="192.168.1.50" autocomplete="off"></label>
+          <div class="two">
+            <label class="field"><span>Username</span><input class="input" id="user" autocomplete="off"></label>
+            <label class="field"><span>Password</span><input class="input" id="pass" type="password" autocomplete="new-password"></label>
+          </div>
+          <label class="field"><span>Number of scenes</span><input class="input" id="sceneCount" type="number" min="1" max="50"></label>
+        </section>
+
+        <section class="group">
+          <h3>Page size (this device)</h3>
+          <div class="zoomrow">
+            <input id="pageZoom" type="range" min="50" max="200" step="5">
+            <output id="pageZoomLabel">100%</output>
+          </div>
+          <p class="hint" style="margin-top:6px">Scales the header and scenes only.</p>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="group">
+          <h3>END Stream</h3>
+          <div class="switchrow">
+            <div><b>Show END Stream button</b><small>Turn off to hide it from the top bar.</small></div>
+            <label class="switch"><input type="checkbox" id="endEnabled"><span></span></label>
+          </div>
+          <div id="endEditor">
+            <div class="steps" id="steps"></div>
+            <button class="btn addstep ghost" id="addStep" type="button">
+              <svg class="icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add hotkey
+            </button>
+            <p class="hint" style="margin-top:10px">Click a box, then press the keys. Hotkeys run in order, waiting the seconds shown before the next one. Empty boxes are removed when you save.</p>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn ghost" id="setCancel" type="button">Cancel</button>
+      <button class="btn primary" id="setSave" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ save scene ============ -->
+<div class="modal" id="nameModal">
+  <div class="sheet" style="max-width:420px" role="dialog">
+    <h2 id="nameTitle">Save scene</h2>
+    <p class="sub">Saves the camera's current position and takes a new thumbnail.</p>
+    <label class="field"><span>Scene name</span><input class="input" id="nameInput" maxlength="40" autocomplete="off"></label>
+    <div class="actions">
+      <button class="btn ghost" id="nameCancel" type="button">Cancel</button>
+      <button class="btn primary" id="nameOk" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
 
 <script>
-let config = {};
+"use strict";
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* ===========================
-   TOAST
-   Use .text() for the message so characters like < & in API errors are not parsed as HTML.
-=========================== */
-function showToast(msg, type = "success") {
-    const colors = { success: "bg-green-600", error: "bg-red-600" };
-    const bg = colors[type] || colors.success;
-    const text = msg != null && String(msg).trim() !== "" ? String(msg) : (type === "error" ? "Something went wrong" : "");
-    const $toast = $("<div/>", {
-        class:
-            "pointer-events-auto min-w-[10rem] max-w-md rounded px-4 py-3 text-sm font-medium text-white shadow-lg break-words " +
-            bg,
-        text: text
-    });
-    $("#toastContainer").append($toast);
-    setTimeout(() => $toast.remove(), type === "error" ? 5000 : 3000);
+let config = { ip: "", user: "", hasPass: false, sceneCount: 30, pageZoom: 100, endEnabled: true, endSteps: [] };
+let editing = false;
+
+/* ================= toast ================= */
+function toast(msg, type) {
+  const el = document.createElement("div");
+  el.className = "toast" + (type === "error" ? " error" : "");
+  el.textContent = msg != null && String(msg).trim() ? String(msg) : (type === "error" ? "Something went wrong" : "Done");
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), type === "error" ? 5000 : 2600);
+}
+let lastErrToast = 0;
+function errToastThrottled(m) { const n = Date.now(); if (n - lastErrToast > 3000) { lastErrToast = n; toast(m, "error"); } }
+
+async function postJSON(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.message || "Request failed");
+  return data;
 }
 
-/* ===========================
-   SETTINGS
-=========================== */
-function pageZoomFromStorage(){
-    const raw = localStorage.getItem("ptz_pageZoom");
-    const z = parseInt(raw, 10);
-    if (isNaN(z)) return 100;
-    return Math.max(50, Math.min(200, z));
+/* ================= settings ================= */
+const isSmallScreen = () => window.matchMedia("(max-width: 767px)").matches;
+function pageZoomFromStorage() {
+  const z = parseInt(localStorage.getItem("ptz_pageZoom"), 10);
+  return isNaN(z) ? 100 : Math.max(50, Math.min(200, z));
+}
+function applyZoomPercent(pct) {
+  let z = parseInt(pct, 10); if (isNaN(z)) z = 100;
+  z = Math.max(50, Math.min(200, z));
+  document.documentElement.style.setProperty("--pz", String(z / 100));   // header + scenes only
+  try { localStorage.setItem("ptz_pageZoom", String(z)); } catch (e) {}
 }
 
-function loadSettings(){
-    fetch("/api/settings")
-        .then(async (res) => {
-            if (!res.ok) {
-                throw new Error("Failed to load settings");
-            }
-            return res.json();
-        })
-        .then((data) => {
-            let pageZoom = pageZoomFromStorage();
-            if (data && Object.prototype.hasOwnProperty.call(data, "pageZoom") && data.pageZoom != null && data.pageZoom !== "") {
-                const p = parseInt(data.pageZoom, 10);
-                if (!isNaN(p)) pageZoom = Math.max(50, Math.min(200, p));
-            }
-            config = {
-                ip: data.ip || "",
-                user: data.user || "",
-                pass: data.pass || "",
-                sceneCount: parseInt(data.sceneCount, 10) || 30,
-                pageZoom
-            };
-            applyConfig();
-        })
-        .catch(() => {
-            config = {
-                ip: "",
-                user: "",
-                pass: "",
-                sceneCount: 30,
-                pageZoom: pageZoomFromStorage()
-            };
-            applyConfig();
-        });
-}
-
-function fillSettingsFormFromConfig(){
-    $('#ip').val(config.ip);
-    $('#user').val(config.user);
-    $('#pass').val(config.pass);
-    $('#sceneCount').val(config.sceneCount || 30);
-    const z = config.pageZoom || 100;
-    $('#pageZoom').val(z);
-    $('#pageZoomLabel').text(z + '%');
-}
-
-function applyZoomPercent(pct){
-    let z = parseInt(pct, 10);
-    if (isNaN(z)) z = 100;
-    z = Math.max(50, Math.min(200, z));
-    document.documentElement.style.zoom = String(z / 100);
-    try {
-        localStorage.setItem("ptz_pageZoom", String(z));
-    } catch (e) {}
-}
-
-function applyConfig(){
-    fillSettingsFormFromConfig();
-    applyZoomPercent(config.pageZoom || 100);
-    buildGrid();
-    updateCameraStatus();
-}
-
-function saveSettings(){
+async function loadSettings() {
+  try {
+    const res = await fetch("/api/settings");
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    let pageZoom = 100;
+    if (localStorage.getItem("ptz_pageZoom") !== null) pageZoom = pageZoomFromStorage();
+    else if (!isSmallScreen() && d.pageZoom) pageZoom = Math.max(50, Math.min(200, parseInt(d.pageZoom, 10) || 100));
     config = {
-        ip:$('#ip').val(),
-        user:$('#user').val(),
-        pass:$('#pass').val(),
-        sceneCount:parseInt($('#sceneCount').val())||30,
-        pageZoom:parseInt($('#pageZoom').val(),10)||100
+      ip: d.ip || "", user: d.user || "", hasPass: !!d.hasPass,
+      sceneCount: parseInt(d.sceneCount, 10) || 30, pageZoom,
+      endEnabled: d.endEnabled !== false,
+      endSteps: Array.isArray(d.endSteps) ? d.endSteps : [],
     };
-
-    fetch("/api/settings", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(config)
-    })
-        .then(async (res) => {
-            if (!res.ok) {
-                let data = {};
-                try { data = await res.json(); } catch (e) {}
-                throw new Error(data.message || "Failed to save settings");
-            }
-            return res.json();
-        })
-        .then(() => {
-            showToast("Settings saved!");
-            closeSettingsModal();
-            applyConfig();
-        })
-        .catch((err)=>showToast(err.message || "Failed to save settings","error"));
+  } catch (e) { /* keep defaults */ }
+  applyConfig();
 }
 
-/* ------------------------
-   SETTINGS MODAL
------------------------- */
-function openSettings(){
-    fillSettingsFormFromConfig();
-    $('#settingsModal').removeClass('hidden');
-}
-function closeSettingsModal(){ $('#settingsModal').addClass('hidden'); }
-function cancelSettings(){
-    fillSettingsFormFromConfig();
-    applyZoomPercent(config.pageZoom || 100);
-    closeSettingsModal();
+function applyConfig() {
+  applyZoomPercent(config.pageZoom || 100);
+  updateEndVisibility();
+  buildGrid();
+  updateCameraStatus();
+  previewKick();
 }
 
-$('#pageZoom').on('input', function(){
-    const v = parseInt($(this).val(), 10);
-    $('#pageZoomLabel').text(v + '%');
-    applyZoomPercent(v);
-});
+/* ----- END step editor ----- */
+let draft = [];            // [{keys:"ctrl+alt+t", delay:5}]
+let recIndex = -1;         // which keycap is recording
 
-/* ------------------------
-   GRID
------------------------- */
-function buildGrid(){
-    fetch(`/presets.json?${Date.now()}`)
-    .then(res => res.json())
-    .then(data => {
+const MOD_ORDER = ["ctrl", "alt", "shift", "windows"];
+function prettyKeys(k) {
+  if (!k) return "";
+  return k.split("+").map((t) => (t.length <= 1 ? t.toUpperCase() : t.charAt(0).toUpperCase() + t.slice(1))).join(" + ");
+}
+function keyNameFromEvent(e) {
+  const c = e.code || "";
+  if (/^Key[A-Z]$/.test(c)) return c.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(c)) return c.slice(5);
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) return c.toLowerCase();
+  const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Space: "space", Enter: "enter",
+    Tab: "tab", Delete: "delete", Insert: "insert", Home: "home", End: "end", PageUp: "page up", PageDown: "page down",
+    Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Semicolon: ";", Quote: "'", Comma: ",", Period: ".",
+    Slash: "/", Backslash: "\\", Backquote: "`" };
+  if (map[c]) return map[c];
+  if (/^Numpad[0-9]$/.test(c)) return "num " + c.slice(6);
+  return "";
+}
+function comboFromEvent(e) {
+  const mods = [];
+  if (e.ctrlKey) mods.push("ctrl");
+  if (e.altKey) mods.push("alt");
+  if (e.shiftKey) mods.push("shift");
+  if (e.metaKey) mods.push("windows");
+  const k = keyNameFromEvent(e);
+  if (!k) return null;
+  return mods.concat(k).join("+");
+}
 
-        let count = config.sceneCount || 30;
-        let grid = $('#presetGrid');
-        grid.empty();
+function renderSteps() {
+  const box = $("#steps");
+  box.textContent = "";
+  if (draft.length) {
+    const head = document.createElement("div");
+    head.className = "stephead";
+    head.innerHTML = "<span></span><span>Hotkey</span><span style='text-align:center'>Wait after</span><span></span>";
+    box.appendChild(head);
+  }
+  draft.forEach((step, i) => {
+    const row = document.createElement("div"); row.className = "steprow";
+    const no = document.createElement("div"); no.className = "stepno"; no.textContent = String(i + 1);
 
-        for(let i=1;i<=count;i++){
-
-            let item = data[i] || {
-                name: `Preset ${i}`,
-                img: "",
-                version: 0
-            };
-
-            let imgSrc = item.img
-                ? `${item.img}?v=${item.version}`
-                : "";
-
-            grid.append(`
-                <div class="preset bg-gray-800 rounded-xl overflow-hidden cursor-pointer hover:scale-[1.02] transition relative flex flex-col"
-                     data-id="${i}">
-                    <div id="imgWrap${i}" class="w-full aspect-video bg-gray-700 flex items-center justify-center">
-                        ${imgSrc
-                            ? `<img id="img${i}" class="w-full h-full object-cover" src="${imgSrc}" onerror="hideImg(${i})">`
-                            : `<span class="text-gray-300 text-sm">No Image</span>`
-                        }
-                    </div>
-
-                    <div id="name${i}" class="p-2 text-center text-sm break-words min-h-[48px] flex items-center justify-center">${item.name}</div>
-                </div>
-            `);
-        }
+    const cap = document.createElement("button");
+    cap.type = "button";
+    cap.className = "keycap" + (step.keys ? "" : " empty") + (recIndex === i ? " rec" : "");
+    cap.textContent = recIndex === i ? "Press the keys..." : (step.keys ? prettyKeys(step.keys) : "Click, then press keys");
+    cap.addEventListener("click", () => { recIndex = i; renderSteps(); const el = $$(".keycap")[i]; if (el) el.focus(); });
+    cap.addEventListener("blur", () => { if (recIndex === i) { recIndex = -1; renderSteps(); } });
+    cap.addEventListener("keydown", (e) => {
+      if (recIndex !== i) return;
+      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) { e.preventDefault(); return; }
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.shiftKey) { recIndex = -1; renderSteps(); return; }
+      if ((e.key === "Backspace") && !e.ctrlKey && !e.altKey) { draft[i].keys = ""; recIndex = -1; renderSteps(); return; }
+      const combo = comboFromEvent(e);
+      if (!combo) { toast("That key can't be used", "error"); return; }
+      draft[i].keys = combo; recIndex = -1; renderSteps();
     });
+
+    const dwrap = document.createElement("div");
+    dwrap.className = "delaybox" + (i === draft.length - 1 ? " off" : "");
+    const din = document.createElement("input");
+    din.className = "input"; din.type = "number"; din.min = "0"; din.max = "600"; din.step = "1";
+    din.value = String(step.delay); din.disabled = i === draft.length - 1;
+    din.title = i === draft.length - 1 ? "Last hotkey: nothing to wait for" : "Seconds to wait before the next hotkey";
+    din.addEventListener("input", () => { const v = parseFloat(din.value); draft[i].delay = isNaN(v) ? 5 : Math.max(0, Math.min(600, v)); });
+    const unit = document.createElement("em"); unit.textContent = "s";
+    dwrap.append(din, unit);
+
+    const del = document.createElement("button");
+    del.type = "button"; del.className = "mini"; del.title = "Remove";
+    del.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>';
+    del.addEventListener("click", () => { draft.splice(i, 1); recIndex = -1; renderSteps(); });
+
+    row.append(no, cap, dwrap, del);
+    box.appendChild(row);
+  });
 }
 
-/* IMAGE FALLBACK */
-function hideImg(id){
-    $(`#img${id}`).hide();
-    if (!$(`#noImg${id}`).length) {
-        $(`#imgWrap${id}`).append(`<span id="noImg${id}" class="text-gray-300 text-sm">No Image</span>`);
-    }
+function syncEndEditorState() {
+  $("#endEditor").style.opacity = $("#endEnabled").checked ? "1" : ".45";
 }
 
-/* CLICK */
-$('#presetGrid').on('click','.preset',function(e){
-    if(!config.ip) return;
-    let id=$(this).data('id');
-    if($('#editMode').prop('checked')){
-        let name=prompt("Preset name:", $(`#name${id}`).text() || `Preset ${id}`);
-        if(!name) return;
-        setPreset(name,id);
-        $(`#name${id}`).text(name);
-        showToast(`Preset ${id} saved`);
-        return;
-    }
-    recallPreset(id);
-    showToast(`Preset ${id} Called`);
+function fillSettingsForm() {
+  $("#ip").value = config.ip;
+  $("#user").value = config.user;
+  $("#pass").value = "";
+  $("#pass").placeholder = config.hasPass ? "Saved (leave blank to keep)" : "";
+  $("#sceneCount").value = config.sceneCount || 30;
+  $("#pageZoom").value = config.pageZoom || 100;
+  $("#pageZoomLabel").textContent = (config.pageZoom || 100) + "%";
+  $("#endEnabled").checked = config.endEnabled;
+  draft = config.endSteps.map((s) => ({ keys: s.keys, delay: s.delay }));
+  recIndex = -1;
+  renderSteps(); syncEndEditorState();
+}
+
+function openSettings() { fillSettingsForm(); $("#settingsModal").classList.add("show"); }
+function closeSettings() { $("#settingsModal").classList.remove("show"); recIndex = -1; }
+function cancelSettings() { applyZoomPercent(config.pageZoom || 100); closeSettings(); }
+
+async function saveSettings() {
+  // empty boxes are never saved
+  const steps = draft.filter((s) => s.keys && s.keys.trim()).map((s) => ({ keys: s.keys, delay: s.delay }));
+  const payload = {
+    ip: $("#ip").value, user: $("#user").value, pass: $("#pass").value,
+    sceneCount: parseInt($("#sceneCount").value, 10) || 30,
+    pageZoom: parseInt($("#pageZoom").value, 10) || 100,
+    endEnabled: $("#endEnabled").checked,
+    endSteps: steps,
+  };
+  try {
+    await postJSON("/api/settings", payload);
+    toast("Settings saved");
+    closeSettings();
+    await loadSettings();
+  } catch (e) { toast(e.message || "Failed to save settings", "error"); }
+}
+
+$("#settingsBtn").addEventListener("click", openSettings);
+$("#setCancel").addEventListener("click", cancelSettings);
+$("#setSave").addEventListener("click", saveSettings);
+$("#addStep").addEventListener("click", () => {
+  if (draft.length >= 12) { toast("Up to 12 hotkeys", "error"); return; }
+  draft.push({ keys: "", delay: 5 });
+  recIndex = draft.length - 1; renderSteps();
+  const el = $$(".keycap")[recIndex]; if (el) el.focus();
+});
+$("#endEnabled").addEventListener("change", syncEndEditorState);
+$("#pageZoom").addEventListener("input", (e) => { const v = parseInt(e.target.value, 10); $("#pageZoomLabel").textContent = v + "%"; applyZoomPercent(v); });
+$("#settingsModal").addEventListener("pointerdown", (e) => { if (e.target.id === "settingsModal") cancelSettings(); });
+
+/* ================= edit mode ================= */
+function setMode(mode) {
+  editing = mode === "edit";
+  document.body.classList.toggle("editing", editing);
+  const b = $("#editBtn");
+  b.classList.toggle("on", editing);
+  b.setAttribute("aria-pressed", editing ? "true" : "false");
+  b.title = editing ? "Done editing" : "Edit scenes";
+}
+$("#editBtn").addEventListener("click", () => setMode(editing ? "live" : "edit"));
+
+/* ================= scene grid ================= */
+let presetsData = {};
+function buildQuick() {
+  const box = $("#quickScenes"); box.textContent = "";
+  if (!config.ip) { const d = document.createElement("div"); d.className = "empty"; d.textContent = "Set the camera IP in Settings"; box.appendChild(d); return; }
+  const count = config.sceneCount || 30;
+  for (let i = 1; i <= count; i++) {
+    const item = presetsData[i] || { name: "Preset " + i };
+    const b = document.createElement("button"); b.type = "button"; b.dataset.id = i; b.title = item.name;
+    const n = document.createElement("b"); n.textContent = i;
+    const t = document.createElement("span"); t.textContent = item.name;
+    b.append(n, t); box.appendChild(b);
+  }
+}
+$("#quickScenes").addEventListener("click", (e) => { const b = e.target.closest("button[data-id]"); if (b) recallScene(b.dataset.id); });
+
+async function buildGrid() {
+  let data = {};
+  try { data = await (await fetch("/presets.json?" + Date.now())).json(); } catch (e) {}
+  presetsData = data; buildQuick();
+  const grid = $("#presetGrid");
+  grid.textContent = "";
+  const count = config.sceneCount || 30;
+  for (let i = 1; i <= count; i++) {
+    const item = data[i] || { name: "Preset " + i, img: "", version: 0 };
+    const card = document.createElement("button");
+    card.type = "button"; card.className = "card"; card.dataset.id = i;
+    if (item.img) {
+      const img = document.createElement("img");
+      img.alt = ""; img.loading = "lazy"; img.src = item.img + "?v=" + item.version;
+      img.addEventListener("error", () => { img.remove(); card.prepend(noImg()); });
+      card.appendChild(img);
+    } else card.appendChild(noImg());
+    const num = document.createElement("span"); num.className = "num"; num.textContent = i;
+    const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = item.name;
+    const ov = document.createElement("div"); ov.className = "editov";
+    ov.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Save camera position here</span>';
+    card.append(num, meta, ov);
+    grid.appendChild(card);
+  }
+}
+function noImg() { const d = document.createElement("div"); d.className = "noimg"; d.textContent = "No image"; return d; }
+
+$("#presetGrid").addEventListener("click", async (e) => {
+  const card = e.target.closest(".card"); if (!card) return;
+  if (!config.ip) { toast("Set the camera IP in Settings first", "error"); return; }
+  const id = card.dataset.id;
+  if (editing) {
+    const cur = $(".meta", card).textContent || ("Preset " + id);
+    const name = await askName(id, cur);
+    if (name) saveScene(id, name);
+    return;
+  }
+  card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 700);
+  recallScene(id);
 });
 
-/* ------------------------
-   API
------------------------- */
-function recallPreset(presetNum) {
-    fetch(`/api/presets/${presetNum}/recall`, { method: "POST" })
-        .then(async (res) => {
-            let data = {};
-            try { data = await res.json(); } catch (e) {}
-            if (!res.ok) throw new Error(data.message || "Failed to recall preset");
-        })
-        .catch((err) => showToast(err.message || "Failed to recall preset", "error"));
+async function recallScene(n) {
+  try { await postJSON(`/api/presets/${n}/recall`); toast("Scene " + n); }
+  catch (e) { toast(e.message || "Failed to recall scene", "error"); }
 }
-function setPreset(name, num) {
-    fetch(`/api/presets/${num}/save`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                name: name
-            })
-        })
-    .then(async (res) => {
-        let data = {};
-        try { data = await res.json(); } catch (e) {}
-        if(!res.ok){
-            throw new Error(data.message || "Save failed");
-        }
-        buildGrid();
-        showToast("Preset saved!");
-    })
-    .catch((err) => showToast(err.message || "Save failed", "error"));
+async function saveScene(n, name) {
+  try { await postJSON(`/api/presets/${n}/save`, { name }); await buildGrid(); toast("Scene " + n + " saved"); }
+  catch (e) { toast(e.message || "Save failed", "error"); }
 }
-/* ------------------------
-   CAMERA STATUS
------------------------- */
-function updateCameraStatus() {
-    if (!config.ip) {
-        setOffline();
-        return;
+
+/* ----- name dialog ----- */
+let nameResolve = null;
+function askName(id, current) {
+  return new Promise((resolve) => {
+    nameResolve = resolve;
+    $("#nameTitle").textContent = "Save scene " + id;
+    $("#nameInput").value = current;
+    $("#nameModal").classList.add("show");
+    setTimeout(() => { $("#nameInput").focus(); $("#nameInput").select(); }, 30);
+  });
+}
+function closeName(v) { $("#nameModal").classList.remove("show"); if (nameResolve) { nameResolve(v); nameResolve = null; } }
+$("#nameOk").addEventListener("click", () => closeName($("#nameInput").value.trim() || null));
+$("#nameCancel").addEventListener("click", () => closeName(null));
+$("#nameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#nameOk").click(); if (e.key === "Escape") closeName(null); });
+$("#nameModal").addEventListener("pointerdown", (e) => { if (e.target.id === "nameModal") closeName(null); });
+
+/* ================= camera status ================= */
+async function updateCameraStatus() {
+  const el = $("#camStatus");
+  const set = (on) => { el.classList.toggle("on", on); $(".txt", el).textContent = on ? "Online" : "Offline"; };
+  if (!config.ip) { set(false); return; }
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 3000);
+  try { const d = await (await fetch("/api/camera/status?d=" + Date.now(), { signal: ctl.signal })).json(); set(!!d.online); }
+  catch (e) { set(false); }
+  clearTimeout(t);
+}
+setInterval(updateCameraStatus, 5000);
+
+/* ================= PTZ channels (latest command wins; never piles up) ================= */
+function makeChannel(url) {
+  let pending = null, busy = false;
+  async function pump() {
+    if (busy || pending === null) return;
+    busy = true; const body = pending; pending = null;
+    try { await postJSON(url, body); }
+    catch (e) { if (!body.quiet) errToastThrottled(e.message); }
+    busy = false; pump();
+  }
+  return { send(body) { pending = body; pump(); } };
+}
+const moveCh = makeChannel("/api/ptz/move");
+const zoomCh = makeChannel("/api/ptz/zoom");
+const focusCh = makeChannel("/api/ptz/focus");
+const allCh = makeChannel("/api/ptz/stopall");
+
+const speedVal = () => parseInt($("#speed").value, 10) || 5;
+const panMax = () => Math.round(1 + (speedVal() - 1) * 23 / 9);    // camera: 1..24
+const tiltMax = () => Math.round(1 + (speedVal() - 1) * 19 / 9);   // camera: 1..20
+const zfSpeed = () => Math.round(1 + (speedVal() - 1) * 6 / 9);    // camera: 1..7
+
+$("#speed").addEventListener("input", (e) => { $("#speedLabel").textContent = e.target.value; try { localStorage.setItem("ptz_speed", e.target.value); } catch (x) {} });
+try { const v = localStorage.getItem("ptz_speed"); if (v) { $("#speed").value = v; $("#speedLabel").textContent = v; } } catch (e) {}
+
+let holds = 0;                       // how many controls are being held right now
+function stopEverything() { holds = 0; $$(".held").forEach((b) => b.classList.remove("held")); resetJoy(); allCh.send({ quiet: true }); }
+
+/* ----- joystick ----- */
+const joy = $("#joy"), knob = $("#knob");
+let joyPointer = null, joyKey = "";
+const DEAD = 0.2;
+
+function joyCommand(vx, vy, mag) {
+  if (mag < DEAD) return { action: "stop" };
+  const ang = Math.atan2(-vy, vx) * 180 / Math.PI;       // 0 = right, 90 = up
+  const sector = Math.round(ang / 45);
+  const names = { "0": "right", "1": "rightup", "2": "up", "3": "leftup", "4": "left", "-4": "left", "-3": "leftdown", "-2": "down", "-1": "rightdown" };
+  const f = Math.pow((mag - DEAD) / (1 - DEAD), 1.15);
+  const m = Math.max(Math.abs(vx), Math.abs(vy)) || 1;
+  return {
+    action: names[String(sector)],
+    panSpeed: Math.max(1, Math.round(panMax() * f * Math.abs(vx) / m)),
+    tiltSpeed: Math.max(1, Math.round(tiltMax() * f * Math.abs(vy) / m)),
+  };
+}
+function joyUpdate(e) {
+  const r = joy.getBoundingClientRect();
+  const maxR = r.width * 0.34;
+  let vx = (e.clientX - (r.left + r.width / 2)) / maxR;
+  let vy = (e.clientY - (r.top + r.height / 2)) / maxR;
+  let mag = Math.hypot(vx, vy);
+  if (mag > 1) { vx /= mag; vy /= mag; mag = 1; }
+  knob.style.transform = `translate(calc(var(--joy) * ${vx * 0.34}), calc(var(--joy) * ${vy * 0.34}))`;
+  const cmd = joyCommand(vx, vy, mag);
+  const key = `${cmd.action}|${cmd.panSpeed || 0}|${cmd.tiltSpeed || 0}`;
+  if (key !== joyKey) { joyKey = key; moveCh.send(cmd); }
+}
+function resetJoy() {
+  joyPointer = null; joy.classList.remove("drag");
+  knob.style.transform = "translate(0,0)";
+  if (joyKey !== "" && joyKey !== "stop|0|0") moveCh.send({ action: "stop", quiet: true });
+  joyKey = "";
+}
+joy.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  joyPointer = e.pointerId; try { joy.setPointerCapture(e.pointerId); } catch (x) {}
+  joy.classList.add("drag"); joyKey = "start"; holds++;
+  joyUpdate(e);
+});
+joy.addEventListener("pointermove", (e) => { if (e.pointerId === joyPointer) joyUpdate(e); });
+const joyEnd = (e) => { if (e.pointerId !== joyPointer) return; holds = Math.max(0, holds - 1); resetJoy(); };
+joy.addEventListener("pointerup", joyEnd);
+joy.addEventListener("pointercancel", joyEnd);
+joy.addEventListener("lostpointercapture", joyEnd);
+joy.addEventListener("contextmenu", (e) => e.preventDefault());
+
+/* ----- hold buttons (zoom / focus) ----- */
+function bindHold(btn, start, stop) {
+  let active = false;
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); if (active) return; active = true; holds++;
+    btn.classList.add("held"); try { btn.setPointerCapture(e.pointerId); } catch (x) {}
+    start();
+  });
+  const end = () => { if (!active) return; active = false; holds = Math.max(0, holds - 1); btn.classList.remove("held"); stop(); };
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((n) => btn.addEventListener(n, end));
+  btn.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+$$("[data-zoom]").forEach((b) => bindHold(b, () => zoomCh.send({ action: b.dataset.zoom, speed: zfSpeed() }), () => zoomCh.send({ action: "zoomstop", quiet: true })));
+$$("[data-focus]").forEach((b) => bindHold(b, () => focusCh.send({ action: b.dataset.focus, speed: zfSpeed() }), () => focusCh.send({ action: "focusstop", quiet: true })));
+
+$("#homeBtn").addEventListener("click", () => moveCh.send({ action: "home" }));
+$("#stopBtn").addEventListener("click", () => { stopEverything(); toast("Stopped"); });
+$$("#afSeg button").forEach((b) => b.addEventListener("click", () => {
+  $$("#afSeg button").forEach((x) => x.classList.toggle("on", x === b));
+  focusCh.send({ action: b.dataset.af });
+}));
+
+/* ----- keyboard (only while the drawer is open and you're not typing) ----- */
+const keysDown = new Set();
+const ARROWS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+function panelOpen() { return $("#camPanel").classList.contains("open"); }
+function typing(e) { const t = e.target; return t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA"); }
+function anyModal() { return !!$(".modal.show"); }
+function kbMove() {
+  const up = keysDown.has("ArrowUp"), dn = keysDown.has("ArrowDown"), lf = keysDown.has("ArrowLeft"), rt = keysDown.has("ArrowRight");
+  const v = up && !dn ? "up" : dn && !up ? "down" : "";
+  const h = lf && !rt ? "left" : rt && !lf ? "right" : "";
+  if (!v && !h) return null;
+  return v && h ? h + v : (v || h);
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !anyModal() && panelOpen()) { pinned = false; closePanel(true); syncPinned(); return; }
+  if (!panelOpen() || typing(e) || anyModal() || e.repeat) return;
+  if (ARROWS[e.key]) { e.preventDefault(); keysDown.add(e.key); moveCh.send({ action: kbMove(), panSpeed: panMax(), tiltSpeed: tiltMax() }); }
+  else if (e.key === "+" || e.key === "=") { e.preventDefault(); keysDown.add("zin"); zoomCh.send({ action: "zoomin", speed: zfSpeed() }); }
+  else if (e.key === "-" || e.key === "_") { e.preventDefault(); keysDown.add("zout"); zoomCh.send({ action: "zoomout", speed: zfSpeed() }); }
+});
+document.addEventListener("keyup", (e) => {
+  if (ARROWS[e.key] && keysDown.has(e.key)) {
+    keysDown.delete(e.key); const a = kbMove();
+    moveCh.send(a ? { action: a, panSpeed: panMax(), tiltSpeed: tiltMax() } : { action: "stop", quiet: true });
+  } else if ((e.key === "+" || e.key === "=") && keysDown.has("zin")) { keysDown.delete("zin"); zoomCh.send({ action: "zoomstop", quiet: true }); }
+  else if ((e.key === "-" || e.key === "_") && keysDown.has("zout")) { keysDown.delete("zout"); zoomCh.send({ action: "zoomstop", quiet: true }); }
+});
+function safetyStop() { if (holds > 0 || keysDown.size > 0) { keysDown.clear(); stopEverything(); } }
+window.addEventListener("blur", safetyStop);
+document.addEventListener("visibilitychange", () => { if (document.hidden) safetyStop(); else previewKick(); });
+
+/* ================= edge drawer (opens at the mouse, on the right edge) ================= */
+const panel = $("#camPanel"), edgeZone = $("#edgeZone"), edgeTab = $("#edgeTab");
+let pinned = localStorage.getItem("ptz_pinned") === "1";
+let previewOn = localStorage.getItem("ptz_preview") !== "0";
+let closeTimer = null, overPanel = false, overZone = false, interacting = false;
+const smallPanel = () => window.matchMedia("(max-width: 700px)").matches;
+const dockedMode = () => window.matchMedia("(min-width: 1000px)").matches;
+
+// Shrink the preview / scene list, then the joystick, until everything fits with no scrolling.
+function fitPanel() {
+  const w = panel.clientWidth - 26;
+  let top = previewOn ? Math.round(w * 9 / 16) : 400;
+  let joy = Math.min(300, w - 24);
+  const minTop = previewOn ? 80 : 56, minJoy = 92;
+  const apply = () => { panel.style.setProperty("--top", top + "px"); panel.style.setProperty("--joy", joy + "px"); };
+  panel.classList.remove("tiny");
+  apply();
+  let guard = 80;
+  const over = () => panel.scrollHeight > panel.clientHeight + 1;
+  while (guard-- > 0 && over()) {
+    if (top > minTop) top = Math.max(minTop, top - 8);
+    else if (joy > minJoy) joy = Math.max(minJoy, joy - 8);
+    else break;
+    apply();
+  }
+  if (over()) {                       // very short screen (phone on its side): drop the picture, keep the controls
+    panel.classList.add("tiny");
+    while (guard-- > 0 && over() && joy > 60) { joy = Math.max(60, joy - 8); apply(); }
+  }
+}
+function placePanel(y) {
+  if (smallPanel() || (pinned && dockedMode())) { panel.style.top = ""; return; }
+  const vh = window.innerHeight, h = panel.offsetHeight;
+  const want = Math.max(14, Math.min(vh - h - 14, (y == null ? vh / 2 : y) - h / 2));
+  panel.style.top = want + "px";
+}
+function relayout(y) { fitPanel(); placePanel(y); fitPanel(); }
+function openPanel(y) {
+  clearTimeout(closeTimer);
+  const wasOpen = panelOpen();
+  panel.classList.add("open"); edgeTab.classList.add("gone");
+  if (!wasOpen) relayout(y);
+  previewKick();
+}
+function closePanel(force) {
+  clearTimeout(closeTimer);
+  if (!force && (pinned || interacting || overPanel || overZone)) return;
+  panel.classList.remove("open"); edgeTab.classList.remove("gone");
+  document.body.classList.remove("pinned");
+  stopEverything();
+}
+function scheduleClose() { clearTimeout(closeTimer); closeTimer = setTimeout(() => closePanel(false), 450); }
+function syncPinned() {
+  document.body.classList.toggle("pinned", pinned && panelOpen());
+  $("#pinBtn").classList.toggle("on", pinned);
+  try { localStorage.setItem("ptz_pinned", pinned ? "1" : "0"); } catch (e) {}
+  if (panelOpen()) relayout(null);
+}
+function setPreview(on) {
+  previewOn = on;
+  try { localStorage.setItem("ptz_preview", on ? "1" : "0"); } catch (e) {}
+  $("#previewBtn").classList.toggle("on", on);
+  $(".eye-on", $("#previewBtn")).classList.toggle("hidden", !on);
+  $(".eye-off", $("#previewBtn")).classList.toggle("hidden", on);
+  $("#previewBox").classList.toggle("hidden", !on);
+  $("#quickScenes").classList.toggle("hidden", on);
+  if (panelOpen()) relayout(null);
+  if (on) { $("#previewMsg").classList.remove("hidden"); $("#previewMsg").textContent = "Loading preview..."; previewKick(); }
+}
+
+edgeZone.addEventListener("mouseenter", (e) => { overZone = true; openPanel(e.clientY); });
+edgeZone.addEventListener("mouseleave", () => { overZone = false; scheduleClose(); });
+panel.addEventListener("mouseenter", () => { overPanel = true; clearTimeout(closeTimer); });
+panel.addEventListener("mouseleave", () => { overPanel = false; scheduleClose(); });
+panel.addEventListener("pointerdown", () => { interacting = true; });
+["pointerup", "pointercancel"].forEach((n) => window.addEventListener(n, () => { if (interacting) { interacting = false; scheduleClose(); } }));
+edgeTab.addEventListener("click", () => { openPanel(null); syncPinned(); });
+$("#closeBtn").addEventListener("click", () => { pinned = false; closePanel(true); syncPinned(); });
+$("#pinBtn").addEventListener("click", () => { pinned = !pinned; syncPinned(); if (!pinned) scheduleClose(); });
+$("#previewBtn").addEventListener("click", () => setPreview(!previewOn));
+// tapping outside closes it (mainly for touch screens)
+document.addEventListener("pointerdown", (e) => {
+  if (!panelOpen() || (pinned && dockedMode())) return;
+  if (panel.contains(e.target) || edgeTab.contains(e.target) || edgeZone.contains(e.target)) return;
+  closePanel(true);
+});
+window.addEventListener("resize", () => { if (panelOpen()) relayout(null); });
+
+/* ================= live preview ================= */
+let previewTimer = null, previewBusy = false, previewUrl = null, previewFails = 0;
+const previewWanted = () => panelOpen() && previewOn && !panel.classList.contains("tiny") && !document.hidden && !!config.ip;
+async function previewTick() {
+  previewTimer = null;
+  if (!previewWanted()) return;
+  previewBusy = true;
+  try {
+    const res = await fetch("/api/camera/snapshot?t=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("no image");
+    const url = URL.createObjectURL(await res.blob());
+    const img = $("#livePreview"), old = previewUrl;
+    img.onload = () => { if (old) URL.revokeObjectURL(old); };
+    img.src = url; previewUrl = url; previewFails = 0;
+    $("#previewMsg").classList.add("hidden");
+    $("#previewDot").className = "live ok";
+  } catch (e) {
+    previewFails++;
+    const m = $("#previewMsg"); m.classList.remove("hidden"); m.textContent = config.ip ? "No picture from camera" : "Set the camera IP in Settings";
+    $("#previewDot").className = "live bad";
+  }
+  previewBusy = false;
+  const delay = previewFails ? Math.min(5000, 1000 * previewFails) : (holds > 0 || keysDown.size ? 350 : 900);
+  if (previewWanted()) previewTimer = setTimeout(previewTick, delay);
+}
+function previewKick() { if (!previewTimer && !previewBusy && previewWanted()) previewTick(); }
+
+/* ================= END Stream button =================
+   idle --tap--> armed --hold--> running --> idle.  No popups.
+   The sequence runs on the server; this only drives the button. */
+const HOLD_MS = 1500, UNFILL_MS = 2500, ARM_MS = 8000;
+const endBtn = $("#endStreamBtn"), endLabel = $("#endLabel"), endFillEl = $("#endFill");
+let endState = "idle", endFill = 0, holding = false, fillRaf = null, lastTs = 0;
+let armTimeout = null, resultTimer = null, endPoll = null, suppressClick = false;
+
+function updateEndVisibility() { $("#endWrap").classList.toggle("hidden", !(config.endEnabled && config.endSteps.length > 0)); }
+function endLook(label, o) {
+  o = o || {};
+  endLabel.textContent = label;
+  endBtn.classList.toggle("armed", !!o.armed);
+  endBtn.classList.toggle("green", !!o.green);
+}
+function endPaint() { endFillEl.style.width = (endFill * 100) + "%"; }
+function endIdle() {
+  endState = "idle"; holding = false; clearTimeout(armTimeout); clearTimeout(resultTimer);
+  endLook("END Stream"); fillLoop();
+}
+function endArm() {
+  endState = "armed"; endLook("Hold to end stream", { armed: true });
+  clearTimeout(armTimeout); armTimeout = setTimeout(() => { if (endState === "armed" && !holding) endIdle(); }, ARM_MS);
+}
+function fillLoop() {
+  if (fillRaf) return;
+  lastTs = performance.now();
+  const tick = (now) => {
+    const dt = now - lastTs; lastTs = now;
+    if (endState === "running" || endState === "result") { fillRaf = null; return; }
+    if (holding) {
+      endFill = Math.min(1, endFill + dt / HOLD_MS);
+      endLabel.textContent = endFill < 1 ? "Keep holding..." : "Ending...";
+      if (endFill >= 1) { fillRaf = null; holding = false; beginEnd(); endPaint(); return; }
+    } else {
+      endFill = Math.max(0, endFill - dt / UNFILL_MS);
+      if (endState === "armed") endLabel.textContent = "Hold to end stream";
     }
+    endPaint();
+    if (!holding && endFill <= 0) { fillRaf = null; return; }
+    fillRaf = requestAnimationFrame(tick);
+  };
+  fillRaf = requestAnimationFrame(tick);
+}
+endBtn.addEventListener("pointerdown", (e) => {
+  suppressClick = endState === "armed";
+  if (endState !== "armed") return;
+  e.preventDefault();
+  try { endBtn.setPointerCapture(e.pointerId); } catch (x) {}
+  holding = true; clearTimeout(armTimeout); fillLoop();
+});
+const endRelease = () => {
+  if (!holding) return;
+  holding = false;
+  if (endState === "armed") {
+    armTimeout = setTimeout(() => { if (endState === "armed" && !holding) endIdle(); }, ARM_MS);
+    fillLoop();
+  }
+};
+["pointerup", "pointercancel", "lostpointercapture"].forEach((n) => endBtn.addEventListener(n, endRelease));
+endBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+endBtn.addEventListener("click", (e) => {
+  if (e.detail === 0) return;                       // keyboard "click": ignored on purpose
+  if (suppressClick) { suppressClick = false; return; }
+  if (endState === "idle") endArm();
+  else if (endState === "running") cancelEnd();
+});
+endBtn.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") e.preventDefault(); });
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-
-    fetch(`/api/camera/status?dummy=${Date.now()}`, {
-        signal: controller.signal,
-        mode: 'same-origin'
-    })
-    .then(res => res.json())
-    .then((data) => {
-        if (data.online) {
-            setOnline();
-        } else {
-            setOffline();
-        }
-    })
-    .catch(() => {
-        setOffline();
-    })
-    .finally(() => clearTimeout(timeout));
+async function beginEnd() {
+  try { await postJSON("/api/endstream/start"); enterRunning(); }
+  catch (err) { toast(err.message || "Could not start END Stream", "error"); endResult("Could not start", false); }
+}
+function enterRunning() {
+  endState = "running"; holding = false; clearTimeout(armTimeout);
+  endFill = 0; endPaint(); endLook("Ending...", { armed: true });
+  if (!endPoll) endPoll = setInterval(pollEnd, 300);
+}
+function endResult(text, good) {
+  endState = "result";
+  if (endPoll) { clearInterval(endPoll); endPoll = null; }
+  endFill = good ? 1 : 0; endPaint(); endLook(text, { green: good });
+  clearTimeout(resultTimer); resultTimer = setTimeout(endIdle, good ? 2500 : 3500);
+}
+async function cancelEnd() { endLabel.textContent = "Cancelling..."; try { await postJSON("/api/endstream/cancel"); } catch (e) {} }
+async function pollEnd() {
+  try {
+    const s = await (await fetch("/api/endstream/status?t=" + Date.now())).json();
+    if (s.state === "running") {
+      endFill = Math.max(0, Math.min(1, s.progress || 0)); endPaint();
+      endLabel.textContent = s.remaining > 0 ? `${s.step} ${s.remaining}s · tap to cancel` : s.step;
+    } else if (s.state === "done") { endResult("Stream ended", true); toast("Stream ended"); }
+    else if (s.state === "cancelled") { endResult("Cancelled", false); toast(s.step + ". Remaining hotkeys were not sent.", "error"); }
+    else if (s.state === "error") { endResult("END Stream failed", false); toast(s.error || "END Stream failed (hotkeys may need Administrator rights)", "error"); }
+  } catch (e) { /* try again next tick */ }
 }
 
-function setOnline(){
-    $('#camStatus').removeClass('bg-red-600').addClass('bg-green-600');
-}
-
-function setOffline(){
-    $('#camStatus').removeClass('bg-green-600').addClass('bg-red-600');
-}
-/* ------------------------
-   Macros
------------------------- */
-// Helper to pause for a given number of milliseconds
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function endstream() {
-    const btn = document.getElementById("endStreamBtn");
-
-    // Disable button and show loading
-    btn.disabled = true;
-    const originalText = btn.innerText;
-    btn.innerText = "Processing...";
-
-    try {
-        // Trigger Hotkey 4
-        triggerHotkey(4);
-
-        // Wait 5000 ms (5 seconds)
-        await sleep(5000);
-
-        // Trigger Hotkey 18
-        triggerHotkey(18);
-
-        // Optional: show success toast
-        showToast("END Stream sequence completed");
-    } catch (err) {
-        console.error("Error in END Stream Macro hotkey sequence:", err);
-        showToast("Error running END Stream sequence", "error");
-    } finally {
-        // Re-enable button and restore text
-        btn.disabled = false;
-        btn.innerText = originalText;
-    }
-}
-/* ------------------------
-   INIT
------------------------- */
+/* ================= URL triggers (Stream Deck etc.) & init ================= */
 function checkURLTrigger() {
-    const urlParams = new URLSearchParams(window.location.search);
-
-    const preset = urlParams.get("preset");
-    if (preset) {
-        recallPreset(Number(preset));
-        showToast(`Preset ${preset} Called via URL`);
-    }
-
-    const hotkey = urlParams.get("hotkey");
-    if (hotkey) {
-        triggerHotkey(Number(hotkey));
-        showToast(`Hotkey ${hotkey} Triggered via URL`);
-    }
+  const p = new URLSearchParams(window.location.search);
+  const preset = p.get("preset"); if (preset) recallScene(Number(preset));
+  const hk = p.get("hotkey");
+  if (hk) fetch("/api/hotkey/" + Number(hk)).then(async (r) => { if (!r.ok) throw new Error(await r.text()); toast("Hotkey " + hk + " triggered"); }).catch((e) => toast(e.message, "error"));
 }
 
-function triggerHotkey(num) {
-    // Call the local Python backend to trigger the hotkey
-    fetch(`/api/hotkey/${num}`)
-        .then(res => {
-            if(!res.ok) throw new Error("Failed to trigger hotkey");
-            console.log(`Hotkey ${num} triggered`);
-        })
-        .catch(err => console.error(err));
-}
-
-// Run on load
-window.addEventListener("load", () => {
-    loadSettings();
-    checkURLTrigger();
+window.addEventListener("load", async () => {
+  setMode("live");
+  setPreview(previewOn);
+  await loadSettings();
+  checkURLTrigger();
+  if (pinned && !smallPanel()) { openPanel(null); syncPinned(); }
+  try { const s = await (await fetch("/api/endstream/status")).json(); if (s.state === "running") enterRunning(); } catch (e) {}
 });
-setInterval(updateCameraStatus,5000);
 </script>
+</body>
 </html>

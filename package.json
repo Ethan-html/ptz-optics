@@ -1,6 +1,6 @@
 {
   "name": "ptz-optics",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "PTZ-Optics Camera Controller",
   "main": "electron/main.js",
   "author": "",
@@ -23,30 +23,26 @@
     ],
     "extraResources": [
       {
-        "from": ".",
-        "to": "backend",
-        "filter": [
-          "app.py",
-          "index.html",
-          "icon.ico",
-          "presets/**/*"
-        ]
+        "from": "backend-dist/ptz-backend",
+        "to": "backend"
       }
     ],
     "win": {
       "icon": "icon.ico",
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
       ]
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "PTZ-Optics-Controller-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "PTZ-Optics-Controller-Portable-${version}.${ext}"
     }
   },
   "devDependencies": {
